@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -80,14 +81,19 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null || _busy) return;
-    final jobName = await _promptJobName();
-    if (!mounted || jobName == null) return;
     setState(() {
       _busy = true;
       _error = null;
     });
+    String? path;
     try {
-      final path = await _service.capture(controller);
+      path = await _service.capture(controller);
+      if (!mounted) return;
+      final jobName = await _promptJobName();
+      if (!mounted || jobName == null) {
+        await _discardCapture(path);
+        return;
+      }
       await _openImage(path, jobName: jobName);
     } catch (e) {
       if (mounted) {
@@ -101,6 +107,14 @@ class _CameraScreenState extends State<CameraScreen>
         setState(() => _busy = false);
         _syncCamera();
       }
+    }
+  }
+
+  Future<void> _discardCapture(String path) async {
+    try {
+      await File(path).delete();
+    } on FileSystemException {
+      // A failed cleanup should not hide the user's cancellation.
     }
   }
 

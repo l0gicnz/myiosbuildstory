@@ -64,13 +64,13 @@ class ConductorDetector {
         inputs = await session.getInputInfo();
         _log('ONNX input tensors: $inputs');
         _log('ONNX output tensors: ${await session.getOutputInfo()}');
-      } on PlatformException catch (e) {
-        // Metadata is not supported by the plugin on some Apple backends.
-        if (defaultTargetPlatform != TargetPlatform.iOS &&
-            defaultTargetPlatform != TargetPlatform.macOS) {
-          rethrow;
-        }
-        _log('Metadata unavailable on this backend: $e');
+      } catch (e) {
+        // Metadata is not supported reliably by some Apple backends. The
+        // plugin can surface a missing field as a Dart cast error instead of
+        // a PlatformException, so do not let optional metadata prevent the
+        // already-configured model from running.
+        if (!_isApple) rethrow;
+        _log('Input/output metadata unavailable on this backend: $e');
       }
       config.validate();
       if (session.inputNames.length != 1 ||
@@ -93,7 +93,16 @@ class ConductorDetector {
       }
       for (final info in inputs) {
         if (info['name'] != config.inputName) continue;
-        final shape = (info['shape'] as List).cast<num>();
+        final rawShape = info['shape'];
+        if (rawShape is! List) {
+          _log('Input metadata has no readable shape; skipping shape check.');
+          continue;
+        }
+        final shape = rawShape.whereType<num>().toList(growable: false);
+        if (shape.length != rawShape.length) {
+          _log('Input metadata shape is not numeric; skipping shape check.');
+          continue;
+        }
         final expected = config.inputShape;
         if (shape.length != expected.length ||
             List.generate(
@@ -104,9 +113,10 @@ class ConductorDetector {
             'Model input $shape does not match configured $expected.',
           );
         }
-        if (info['type'] != config.dataType.name) {
+        final type = info['type'];
+        if (type is String && type != config.dataType.name) {
           throw StateError(
-            'Model input type ${info['type']} differs from ${config.dataType.name}.',
+            'Model input type $type differs from ${config.dataType.name}.',
           );
         }
       }
@@ -134,9 +144,7 @@ class ConductorDetector {
       outputs = await _session!.run({config.inputName!: input});
       timer.stop();
       final tensors = <String, ModelTensor>{};
-      final isApple =
-          defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS;
+      final isApple = _isApple;
       final requiredOutputs = <String>{
         config.boxesName!,
         config.scoresName!,
@@ -218,7 +226,20 @@ class ConductorDetector {
     OrtValue value,
   ) async {
     try {
-      return (await value.asFlattenedList()).cast<num>();
+      dynamic raw = await value.asFlattenedList();
+      if (raw == null) {
+        throw StateError('native backend returned null tensor data');
+      }
+      if (raw is! List) {
+        throw StateError(
+          'native backend returned ${raw.runtimeType}, not a list',
+        );
+      }
+      final values = raw.whereType<num>().toList(growable: false);
+      if (values.length != raw.length) {
+        throw StateError('tensor contains non-numeric values');
+      }
+      return values;
     } catch (error) {
       throw FormatException(
         'Could not read ONNX output "$name" with shape ${value.shape} '
@@ -241,4 +262,8 @@ class ConductorDetector {
     });
     return _tail;
   }
+
+  static bool get _isApple =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
 }
