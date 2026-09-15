@@ -9,6 +9,8 @@ on:
 jobs:
   build-ios:
     runs-on: macos-15-intel
+    permissions:
+      contents: write
 
     steps:
       - name: Check out source
@@ -40,9 +42,12 @@ jobs:
           cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
           ditto -c -k --sequesterRsrc --keepParent Payload build/ios/unsigned/powerline_measure.ipa
 
-      - name: Upload unsigned IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: powerline-measure-unsigned-ipa
-          path: build/ios/unsigned/powerline_measure.ipa
-          if-no-files-found: error
+      - name: Upload unsigned IPA as a GitHub Release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ios-build-${GITHUB_RUN_NUMBER}" \
+            build/ios/unsigned/powerline_measure.ipa \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "iOS build ${GITHUB_RUN_NUMBER}" \
+            --notes "Unsigned IPA for personal Sideloadly testing."
