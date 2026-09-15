@@ -361,6 +361,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                       'Measured width: $value',
                                     if (item.location case final value?)
                                       'Location: ${_locationLabel(value)}',
+                                    if (item.rangefinderDistanceMetres
+                                        case final distance?)
+                                      'Rangefinder distance: '
+                                          '${distance.toStringAsFixed(2)} m',
                                     if (item.notes.isNotEmpty) item.notes,
                                   ].join('\n'),
                                 ),

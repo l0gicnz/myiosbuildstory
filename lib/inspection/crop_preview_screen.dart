@@ -189,6 +189,31 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         '${fov.toStringAsFixed(1)}° FOV';
   }
 
+  String _rangefinderDescription() {
+    final distance = widget.rangefinderDistanceMetres;
+    if (distance == null || distance <= 0) return '';
+    final metadata = widget.cameraMetadata;
+    final cameraModel = metadata?['cameraModel'] as String?;
+    final fov =
+        _doubleValue(metadata?['correctedFovDegrees']) ??
+        _doubleValue(metadata?['baseFovDegrees']);
+    final camera = switch ((cameraModel, fov)) {
+      (final model?, final degrees?) =>
+        ' - $model, ${degrees.toStringAsFixed(1)} deg FOV',
+      (final model?, null) => ' - $model',
+      _ => '',
+    };
+    return 'Rangefinder distance: ${distance.toStringAsFixed(2)} m$camera';
+  }
+
+  String _cameraScaleAvailabilityMessage() {
+    final distance = widget.rangefinderDistanceMetres;
+    if (distance == null || distance <= 0 || _cameraScale() != null) return '';
+    return 'Camera model/FOV data unavailable. The rangefinder distance was '
+        'saved, but automatic scale could not be calculated. Use two-point '
+        'calibration instead.';
+  }
+
   void _settingsChanged() {
     if (mounted) setState(() {});
   }
@@ -788,6 +813,19 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       ),
                     if (widget.location case final location?)
                       Text('Location: ${_locationLabel(location)}'),
+                    if (_rangefinderDescription().isNotEmpty)
+                      Text(
+                        _rangefinderDescription(),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    if (_cameraScaleAvailabilityMessage().isNotEmpty)
+                      Text(
+                        _cameraScaleAvailabilityMessage(),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
                     if (_busy) const Text('Processing on device...'),
                     if (_error != null)
                       SelectableText(
