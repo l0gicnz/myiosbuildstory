@@ -138,9 +138,15 @@ class ConductorDetector {
         _log(
           'Output ${entry.key}: ${entry.value.shape} ${entry.value.dataType.name}',
         );
+        // The Swift backend can return null data for a valid zero-length
+        // tensor (for example, [0, 4] boxes on an image with no detections).
+        // Avoid the plugin's null-to-List cast and represent it as [] instead.
+        final values = entry.value.shape.any((dimension) => dimension == 0)
+            ? <num>[]
+            : (await entry.value.asFlattenedList()).cast<num>();
         tensors[entry.key] = ModelTensor(
           entry.value.shape,
-          (await entry.value.asFlattenedList()).cast<num>(),
+          values,
           entry.value.dataType.name,
         );
       }
