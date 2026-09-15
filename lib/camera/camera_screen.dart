@@ -19,6 +19,7 @@ class _CameraScreenState extends State<CameraScreen>
   CameraController? _controller;
   Future<void> _queue = Future.value();
   bool _active = true, _inspecting = false, _busy = false;
+  double _zoom = 1, _zoomAtGestureStart = 1, _minZoom = 1, _maxZoom = 1;
   String? _error;
   @override
   void initState() {
@@ -41,8 +42,13 @@ class _CameraScreenState extends State<CameraScreen>
           await next.dispose();
           return;
         }
+        final minZoom = await next.getMinZoomLevel();
+        final maxZoom = await next.getMaxZoomLevel();
         setState(() {
           _controller = next;
+          _minZoom = minZoom;
+          _maxZoom = maxZoom;
+          _zoom = minZoom;
           _error = null;
         });
       } catch (e) {
@@ -125,6 +131,64 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
+  Future<void> _setZoom(double value) async {
+    final controller = _controller;
+    if (controller == null) return;
+    final zoom = value.clamp(_minZoom, _maxZoom).toDouble();
+    try {
+      await controller.setZoomLevel(zoom);
+      if (mounted) setState(() => _zoom = zoom);
+    } catch (_) {
+      // Some camera backends expose zoom limits but reject a transient update.
+    }
+  }
+
+  Widget _buildCameraPreview() {
+    final controller = _controller!;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onScaleStart: (_) => _zoomAtGestureStart = _zoom,
+          onScaleUpdate: (details) {
+            if (details.scale != 1) {
+              _setZoom(_zoomAtGestureStart * details.scale);
+            }
+          },
+          child: CameraPreview(controller),
+        ),
+        if (_maxZoom > _minZoom)
+          Positioned(
+            right: 12,
+            top: 12,
+            child: Column(
+              children: [
+                IconButton.filledTonal(
+                  tooltip: 'Reset camera zoom',
+                  onPressed: () => _setZoom(_minZoom),
+                  icon: const Icon(Icons.zoom_out_map),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    child: Text('${_zoom.toStringAsFixed(1)}×'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -165,9 +229,9 @@ class _CameraScreenState extends State<CameraScreen>
                         ],
                       ),
                     )
-                  : _controller == null
+              : _controller == null
                   ? const CircularProgressIndicator()
-                  : CameraPreview(_controller!),
+                  : _buildCameraPreview(),
             ),
           ),
           Padding(
