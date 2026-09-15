@@ -42,6 +42,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
             path: path,
             selection: selection,
             jobName: widget.jobName,
+            location: widget.location,
           ),
         ),
       );
@@ -84,7 +85,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Padding(
             padding: const EdgeInsets.all(8),
             child: Text(
-              '${widget.source.width} x ${widget.source.height} source pixels\nPinch to zoom - Drag to pan - Tap a conductor',
+              'Pinch to zoom and drag to frame the conductor, then tap the area to inspect.',
               textAlign: TextAlign.center,
             ),
           ),

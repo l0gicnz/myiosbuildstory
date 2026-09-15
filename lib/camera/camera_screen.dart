@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../image_processing/crop_service.dart';
 import '../history/history_screen.dart';
@@ -29,6 +31,7 @@ class _CameraScreenState extends State<CameraScreen>
   FlashMode _flashMode = FlashMode.off;
   Offset? _focusPoint;
   Timer? _focusTimer;
+  String _lastJobName = '';
   String? _error;
   @override
   void initState() {
@@ -89,11 +92,16 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       path = await _service.capture(controller);
       if (!mounted) return;
-      final jobName = await _promptJobName();
+      final jobName = await _promptJobName(initialValue: _lastJobName);
       if (!mounted || jobName == null) {
         await _discardCapture(path);
         return;
       }
+      if (!await _confirmOverwrite(jobName)) {
+        await _discardCapture(path);
+        return;
+      }
+      _lastJobName = jobName;
       final location = await _locationSafely();
       await _openImage(path, jobName: jobName, location: location);
     } catch (e) {
@@ -131,6 +139,11 @@ class _CameraScreenState extends State<CameraScreen>
         _error = null;
       });
       final path = await _service.importImage(picked.path);
+      if (!await _confirmOverwrite(jobName)) {
+        await _discardCapture(path);
+        return;
+      }
+      _lastJobName = jobName;
       final location = await _locationSafely();
       await _openImage(path, jobName: jobName, location: location);
     } catch (e) {
@@ -147,8 +160,12 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Future<String?> _promptJobName() async {
+  Future<String?> _promptJobName({String initialValue = ''}) async {
     final controller = TextEditingController();
+    controller.text = initialValue;
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
     final value = await showDialog<String?>(
       context: context,
       builder: (context) => AlertDialog(
@@ -184,6 +201,78 @@ class _CameraScreenState extends State<CameraScreen>
       return await _service.currentLocation();
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<bool> _confirmOverwrite(String jobName) async {
+    final normalized = jobName.trim().toLowerCase();
+    if (normalized.isEmpty) return true;
+    final documents = await getApplicationDocumentsDirectory();
+    final directory = Directory('${documents.path}/captures');
+    if (!await directory.exists()) return true;
+    final matches = <(File, Map<String, dynamic>)>[];
+    await for (final entity in directory.list()) {
+      if (entity is! File || !entity.path.endsWith('.png.json')) continue;
+      try {
+        final decoded = jsonDecode(await entity.readAsString());
+        if (decoded is! Map<String, dynamic>) continue;
+        final existing = (decoded['jobName'] as String? ?? '').trim();
+        if (existing.toLowerCase() == normalized) {
+          matches.add((entity, decoded));
+        }
+      } catch (_) {
+        // Ignore incomplete metadata while checking for duplicate IDs.
+      }
+    }
+    if (matches.isEmpty || !mounted) return true;
+    final overwrite = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ID already exists'),
+        content: Text(
+          'An inspection named "$jobName" is already saved. Overwrite it?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Overwrite'),
+          ),
+        ],
+      ),
+    );
+    if (overwrite != true) return false;
+    for (final (metadata, raw) in matches) {
+      await _deleteRecord(metadata, raw);
+    }
+    return true;
+  }
+
+  Future<void> _deleteRecord(File metadata, Map<String, dynamic> raw) async {
+    final cropPath = raw['cropPath'] as String?;
+    final paths = <String>{metadata.path};
+    if (cropPath != null) {
+      paths.addAll([
+        cropPath,
+        '$cropPath.accepted-mask.png',
+        '$cropPath.accepted.json',
+        '$cropPath.report.txt',
+        '$cropPath.report.json',
+        '$cropPath.report.csv',
+      ]);
+    }
+    for (final key in ['originalPath', 'uprightPath']) {
+      if (raw[key] case final String path?) paths.add(path);
+    }
+    for (final path in paths) {
+      try {
+        await File(path).delete();
+      } on FileSystemException {
+        // Continue removing the remaining sidecars.
+      }
     }
   }
 

@@ -33,7 +33,7 @@ class _HistoryItem {
   final String notes;
   final String jobName;
   final String? measurement;
-  final String? location;
+  final Map<String, Object?>? location;
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -80,7 +80,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
           var notes = raw['notes'] as String? ?? '';
           var jobName = raw['jobName'] as String? ?? '';
-          final location = _locationLabel(raw['location']);
+          var location = _locationMap(raw['location']);
           final acceptedFile = File('$cropPath.accepted.json');
           String? measurement;
           final accepted = await acceptedFile.exists();
@@ -96,6 +96,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               if (acceptedRaw is Map<String, dynamic>) {
                 notes = acceptedRaw['notes'] as String? ?? notes;
                 jobName = acceptedRaw['jobName'] as String? ?? jobName;
+                location ??= _locationMap(acceptedRaw['location']);
               }
               if (width is num) {
                 measurement =
@@ -135,14 +136,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return value.toInt();
   }
 
-  static String? _locationLabel(Object? value) {
+  static Map<String, Object?>? _locationMap(Object? value) {
     if (value is! Map) return null;
     final latitude = value['latitude'];
     final longitude = value['longitude'];
     if (latitude is! num || longitude is! num) return null;
+    return Map<String, Object?>.from(value);
+  }
+
+  static String _locationLabel(Map<String, Object?> value) {
+    final latitude = value['latitude'] as num;
+    final longitude = value['longitude'] as num;
     final accuracy = value['accuracyMetres'];
     final suffix = accuracy is num
-        ? ' (±${accuracy.toStringAsFixed(0)} m)'
+        ? ' (+/-${accuracy.toStringAsFixed(0)} m)'
         : '';
     return '${latitude.toStringAsFixed(6)}, '
         '${longitude.toStringAsFixed(6)}$suffix';
@@ -155,6 +162,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           path: item.cropPath,
           selection: item.selection,
           jobName: item.jobName,
+          location: item.location,
           initialNotes: item.notes,
         ),
       ),
@@ -330,7 +338,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     if (item.measurement case final value?)
                                       'Measured width: $value',
                                     if (item.location case final value?)
-                                      'Location: $value',
+                                      'Location: ${_locationLabel(value)}',
                                     if (item.notes.isNotEmpty) item.notes,
                                   ].join('\n'),
                                 ),

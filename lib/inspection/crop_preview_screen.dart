@@ -15,7 +15,6 @@ import '../ml/detection_store.dart';
 import '../ml/model_config.dart';
 import '../settings/app_settings.dart';
 import 'conductor_overlay.dart';
-import 'inspection_screen.dart';
 
 class CropPreviewScreen extends StatefulWidget {
   const CropPreviewScreen({
@@ -23,11 +22,13 @@ class CropPreviewScreen extends StatefulWidget {
     required this.path,
     required this.selection,
     this.jobName,
+    this.location,
     this.initialNotes = '',
   });
   final String path;
   final CropSelection selection;
   final String? jobName;
+  final Map<String, Object?>? location;
   final String initialNotes;
   @override
   State<CropPreviewScreen> createState() => _CropPreviewScreenState();
@@ -47,6 +48,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   bool _busy = false, _debug = false, _accepted = false;
   bool _calibrating = false;
   final _calibrationPoints = <Offset>[];
+  int _activeCalibrationPoint = 0;
   String? _error;
   double? _millimetresPerPixel;
 
@@ -138,6 +140,15 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   static double? _doubleValue(Object? value) =>
       value is num && value.isFinite ? value.toDouble() : null;
 
+  static String _locationLabel(Map<String, Object?> location) {
+    final latitude = _doubleValue(location['latitude']);
+    final longitude = _doubleValue(location['longitude']);
+    if (latitude == null || longitude == null) return 'Unavailable';
+    final accuracy = _doubleValue(location['accuracyMetres']);
+    return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}'
+        '${accuracy == null ? '' : ' (±${accuracy.toStringAsFixed(0)} m)'}';
+  }
+
   void _settingsChanged() {
     if (mounted) setState(() {});
   }
@@ -195,6 +206,14 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
           if (widthMm case final mm?)
             'displayedWidth': isInches ? mm / 25.4 : mm,
         },
+        if (_calibrationPoints.length == 2) ...{
+          'calibrationPixelDistance':
+              (_calibrationPoints[1] - _calibrationPoints[0]).distance,
+          'calibrationPoints': [
+            [_calibrationPoints[0].dx, _calibrationPoints[0].dy],
+            [_calibrationPoints[1].dx, _calibrationPoints[1].dy],
+          ],
+        },
       }, selectedDetection: selected);
       if (mounted) setState(() => _accepted = true);
     } catch (e) {
@@ -204,10 +223,41 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     }
   }
 
+  Future<void> _saveNotes() async {
+    if (!_accepted || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final notes = _notesController.text.trim();
+      for (final path in [
+        '${widget.path}.accepted.json',
+        '${widget.path}.json',
+      ]) {
+        final file = File(path);
+        if (!await file.exists()) continue;
+        final decoded = jsonDecode(await file.readAsString());
+        if (decoded is! Map<String, dynamic>) continue;
+        decoded['notes'] = notes;
+        await file.writeAsString(jsonEncode(decoded), flush: true);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Notes saved.')));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not save notes: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _beginCalibration() {
     setState(() {
       _calibrating = true;
       _calibrationPoints.clear();
+      _activeCalibrationPoint = 0;
     });
   }
 
@@ -226,10 +276,45 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
           .toDouble(),
     );
     if (_calibrationPoints.length >= 2) return;
-    setState(() => _calibrationPoints.add(point));
-    if (_calibrationPoints.length == 2) {
-      await _finishCalibration();
-    }
+    setState(() {
+      _calibrationPoints.add(point);
+      _activeCalibrationPoint = _calibrationPoints.length - 1;
+    });
+  }
+
+  void _moveCalibrationPoint(int index, Offset point) {
+    if (index < 0 || index >= _calibrationPoints.length) return;
+    setState(() {
+      _activeCalibrationPoint = index;
+      _calibrationPoints[index] = Offset(
+        point.dx.clamp(0, widget.selection.cropWidth - 1).toDouble(),
+        point.dy.clamp(0, widget.selection.cropHeight - 1).toDouble(),
+      );
+    });
+  }
+
+  void _nudgeCalibrationPoint(Offset delta) {
+    if (_calibrationPoints.isEmpty) return;
+    _moveCalibrationPoint(
+      _activeCalibrationPoint,
+      _calibrationPoints[_activeCalibrationPoint] + delta,
+    );
+  }
+
+  void _moveCalibrationPointByDelta(
+    int index,
+    Offset delta,
+    Size displayedSize,
+  ) {
+    if (displayedSize.width <= 0 || displayedSize.height <= 0) return;
+    _moveCalibrationPoint(
+      index,
+      _calibrationPoints[index] +
+          Offset(
+            delta.dx / displayedSize.width * widget.selection.cropWidth,
+            delta.dy / displayedSize.height * widget.selection.cropHeight,
+          ),
+    );
   }
 
   Future<void> _finishCalibration() async {
@@ -275,10 +360,49 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     );
     millimetres.dispose();
     if (!mounted) return;
+    final ratio = value == null ? null : value / pixelDistance;
     setState(() {
       _calibrating = false;
-      if (value != null) _millimetresPerPixel = value / pixelDistance;
+      if (ratio != null) _millimetresPerPixel = ratio;
     });
+    if (ratio != null && _accepted) await _persistCalibration(ratio);
+  }
+
+  Future<void> _persistCalibration(double ratio) async {
+    try {
+      final file = File('${widget.path}.accepted.json');
+      if (!await file.exists()) return;
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map<String, dynamic>) return;
+      final selected = _selectedDetection ?? _result?.selectedDetection;
+      final unit = AppSettings.instance.unit;
+      final widthMm = selected == null
+          ? null
+          : selected.segmentationWidth * ratio;
+      decoded['millimetresPerPixel'] = ratio;
+      if (widthMm != null) {
+        decoded['segmentationWidthMm'] = widthMm;
+        decoded['displayedWidth'] = unit == MeasurementUnit.inches
+            ? widthMm / 25.4
+            : widthMm;
+      }
+      decoded['calibrationPixelDistance'] =
+          (_calibrationPoints[1] - _calibrationPoints[0]).distance;
+      decoded['calibrationPoints'] = [
+        [_calibrationPoints[0].dx, _calibrationPoints[0].dy],
+        [_calibrationPoints[1].dx, _calibrationPoints[1].dy],
+      ];
+      decoded['measurementUnit'] = unit.name;
+      await file.writeAsString(jsonEncode(decoded), flush: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Calibration saved.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = 'Could not save calibration: $e');
+      }
+    }
   }
 
   Future<void> _share() async {
@@ -299,6 +423,8 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final lines = <String>[
       if (widget.jobName?.trim().isNotEmpty == true)
         'Job: ${widget.jobName!.trim()}',
+      if (widget.location case final location?)
+        'Location: ${_locationLabel(location)}',
       'Crop: ${widget.selection.cropWidth} x ${widget.selection.cropHeight} px',
       if (selected != null) ...[
         'Segmented width: ${selected.segmentationWidth} px',
@@ -315,6 +441,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       'selection': widget.selection.toJson(),
       'notes': _notesController.text.trim(),
       'measurementUnit': AppSettings.instance.unit.name,
+      ...?widget.location == null ? null : {'location': widget.location},
       if (selected != null) ...{
         'confidence': selected.confidence,
         'segmentationWidthPx': selected.segmentationWidth,
@@ -470,44 +597,100 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                                       var i = 0;
                                       i < _calibrationPoints.length;
                                       i++
-                                    )
+                                    ) ...[
                                       Positioned(
                                         left:
                                             _calibrationPoints[i].dx /
                                                 widget.selection.cropWidth *
                                                 rect.width -
-                                            12,
+                                            20,
                                         top:
                                             _calibrationPoints[i].dy /
                                                 widget.selection.cropHeight *
                                                 rect.height -
-                                            12,
+                                            20,
                                         child: IgnorePointer(
-                                          child: Container(
-                                            width: 24,
-                                            height: 24,
+                                          child: SizedBox.square(
+                                            dimension: 40,
+                                            child: CustomPaint(
+                                              painter:
+                                                  _CalibrationCrosshairPainter(
+                                                    active:
+                                                        i ==
+                                                        _activeCalibrationPoint,
+                                                  ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      Positioned(
+                                        left:
+                                            (_calibrationPoints[i].dx /
+                                                        widget
+                                                            .selection
+                                                            .cropWidth *
+                                                        rect.width +
+                                                    14)
+                                                .clamp(0, rect.width - 40)
+                                                .toDouble(),
+                                        top:
+                                            (_calibrationPoints[i].dy /
+                                                        widget
+                                                            .selection
+                                                            .cropHeight *
+                                                        rect.height -
+                                                    32)
+                                                .clamp(0, rect.height - 40)
+                                                .toDouble(),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: _calibrating
+                                              ? () => setState(
+                                                  () =>
+                                                      _activeCalibrationPoint =
+                                                          i,
+                                                )
+                                              : null,
+                                          onPanStart: _calibrating
+                                              ? (_) => setState(
+                                                  () =>
+                                                      _activeCalibrationPoint =
+                                                          i,
+                                                )
+                                              : null,
+                                          onPanUpdate: _calibrating
+                                              ? (details) =>
+                                                    _moveCalibrationPointByDelta(
+                                                      i,
+                                                      details.delta,
+                                                      rect.size,
+                                                    )
+                                              : null,
+                                          child: DecoratedBox(
                                             decoration: BoxDecoration(
-                                              color: Colors.amber.withValues(
-                                                alpha: 0.25,
+                                              color: Colors.black.withValues(
+                                                alpha: 0.7,
                                               ),
                                               border: Border.all(
-                                                color: Colors.amber,
-                                                width: 2,
+                                                color:
+                                                    i == _activeCalibrationPoint
+                                                    ? Colors.amber
+                                                    : Colors.white70,
+                                                width: 1.5,
                                               ),
                                               shape: BoxShape.circle,
                                             ),
-                                            child: Center(
-                                              child: Text(
-                                                '${i + 1}',
-                                                style: const TextStyle(
-                                                  color: Colors.amber,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
+                                            child: const Center(
+                                              child: Icon(
+                                                Icons.open_with,
+                                                size: 20,
+                                                color: Colors.amber,
                                               ),
                                             ),
                                           ),
                                         ),
                                       ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -529,12 +712,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
-                    Text(
-                      selectionDescription(widget.selection),
+                    const Text(
+                      'Crop preview · tap Calibrate to set a scale from two visible reference points.',
                       textAlign: TextAlign.center,
-                    ),
-                    Text(
-                      'Tap in crop: (${_point.dx.toInt()}, ${_point.dy.toInt()})',
                     ),
                     TextField(
                       controller: _notesController,
@@ -545,6 +725,17 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         hintText: 'Pole, span, conductor, or site details',
                       ),
                     ),
+                    if (_accepted)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _busy ? null : _saveNotes,
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text('Save notes'),
+                        ),
+                      ),
+                    if (widget.location case final location?)
+                      Text('Location: ${_locationLabel(location)}'),
                     if (_busy) const Text('Processing on device...'),
                     if (_error != null)
                       SelectableText(
@@ -558,6 +749,10 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         'Inference: ${result.inferenceTime.inMilliseconds} ms | Total: ${result.totalTime.inMilliseconds} ms',
                       ),
                       if (selected != null) ...[
+                        const Text(
+                          'Highlighted mask: detected conductor',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         Text(
                           'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}% | Mask: ${selected.maskArea} pixels',
                         ),
@@ -596,11 +791,68 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         ),
                     ],
                     if (_calibrating)
-                      Text(
-                        _calibrationPoints.isEmpty
-                            ? 'Calibration: tap the first reference point.'
-                            : 'Calibration: tap the second reference point.',
-                        textAlign: TextAlign.center,
+                      Column(
+                        children: [
+                          Text(switch (_calibrationPoints.length) {
+                            0 => 'Calibration: tap the first reference point.',
+                            1 => 'Calibration: tap the second reference point.',
+                            _ => 'Drag the handles or use the arrows to align the points.',
+                          }, textAlign: TextAlign.center),
+                          if (_calibrationPoints.isNotEmpty)
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('Point 1'),
+                                  selected: _activeCalibrationPoint == 0,
+                                  onSelected: (_) => setState(
+                                    () => _activeCalibrationPoint = 0,
+                                  ),
+                                ),
+                                if (_calibrationPoints.length > 1)
+                                  ChoiceChip(
+                                    label: const Text('Point 2'),
+                                    selected: _activeCalibrationPoint == 1,
+                                    onSelected: (_) => setState(
+                                      () => _activeCalibrationPoint = 1,
+                                    ),
+                                  ),
+                                IconButton(
+                                  tooltip: 'Move point left 1 pixel',
+                                  onPressed: () => _nudgeCalibrationPoint(
+                                    const Offset(-1, 0),
+                                  ),
+                                  icon: const Icon(Icons.chevron_left),
+                                ),
+                                IconButton(
+                                  tooltip: 'Move point up 1 pixel',
+                                  onPressed: () => _nudgeCalibrationPoint(
+                                    const Offset(0, -1),
+                                  ),
+                                  icon: const Icon(Icons.expand_less),
+                                ),
+                                IconButton(
+                                  tooltip: 'Move point down 1 pixel',
+                                  onPressed: () => _nudgeCalibrationPoint(
+                                    const Offset(0, 1),
+                                  ),
+                                  icon: const Icon(Icons.expand_more),
+                                ),
+                                IconButton(
+                                  tooltip: 'Move point right 1 pixel',
+                                  onPressed: () => _nudgeCalibrationPoint(
+                                    const Offset(1, 0),
+                                  ),
+                                  icon: const Icon(Icons.chevron_right),
+                                ),
+                                if (_calibrationPoints.length == 2)
+                                  Text(
+                                    '${(_calibrationPoints[1] - _calibrationPoints[0]).distance.toStringAsFixed(1)} px',
+                                  ),
+                              ],
+                            ),
+                        ],
                       ),
                     if (_accepted)
                       const Text('Detection accepted and saved for this crop.'),
@@ -628,15 +880,19 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           onPressed: _busy
                               ? null
                               : (_calibrating
-                                    ? () => setState(() {
-                                        _calibrating = false;
-                                        _calibrationPoints.clear();
-                                      })
+                                    ? _calibrationPoints.length == 2
+                                          ? _finishCalibration
+                                          : () => setState(() {
+                                              _calibrating = false;
+                                              _calibrationPoints.clear();
+                                            })
                                     : _beginCalibration),
                           icon: const Icon(Icons.straighten),
                           label: Text(
                             _calibrating
-                                ? 'Cancel calibration'
+                                ? _calibrationPoints.length == 2
+                                      ? 'Apply calibration'
+                                      : 'Cancel calibration'
                                 : _millimetresPerPixel == null
                                 ? 'Calibrate (2 points)'
                                 : 'Recalibrate (2 points)',
@@ -686,4 +942,70 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       ),
     );
   }
+}
+
+class _CalibrationCrosshairPainter extends CustomPainter {
+  const _CalibrationCrosshairPainter({required this.active});
+
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = size.center(Offset.zero);
+    final color = active ? Colors.amberAccent : Colors.white;
+    final shadow = Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+    final line = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawCircle(centre, 8, shadow);
+    canvas.drawCircle(centre, 8, line);
+    canvas.drawLine(
+      Offset(centre.dx - 17, centre.dy),
+      Offset(centre.dx - 5, centre.dy),
+      shadow,
+    );
+    canvas.drawLine(
+      Offset(centre.dx + 5, centre.dy),
+      Offset(centre.dx + 17, centre.dy),
+      shadow,
+    );
+    canvas.drawLine(
+      Offset(centre.dx, centre.dy - 17),
+      Offset(centre.dx, centre.dy - 5),
+      shadow,
+    );
+    canvas.drawLine(
+      Offset(centre.dx, centre.dy + 5),
+      Offset(centre.dx, centre.dy + 17),
+      shadow,
+    );
+    canvas.drawLine(
+      Offset(centre.dx - 17, centre.dy),
+      Offset(centre.dx - 5, centre.dy),
+      line,
+    );
+    canvas.drawLine(
+      Offset(centre.dx + 5, centre.dy),
+      Offset(centre.dx + 17, centre.dy),
+      line,
+    );
+    canvas.drawLine(
+      Offset(centre.dx, centre.dy - 17),
+      Offset(centre.dx, centre.dy - 5),
+      line,
+    );
+    canvas.drawLine(
+      Offset(centre.dx, centre.dy + 5),
+      Offset(centre.dx, centre.dy + 17),
+      line,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CalibrationCrosshairPainter oldDelegate) =>
+      oldDelegate.active != active;
 }

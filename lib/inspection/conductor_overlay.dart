@@ -112,12 +112,23 @@ class _OverlayPainter extends CustomPainter {
           : d.isValid
           ? Colors.orange
           : Colors.redAccent;
+      final path = paths[d.index]!;
       canvas.drawPath(
-        paths[d.index]!,
+        path,
         Paint()
-          ..color = color.withValues(alpha: 0.4)
+          ..color = color.withValues(alpha: d == selected ? 0.62 : 0.3)
           ..isAntiAlias = false,
       );
+      if (d == selected) {
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = Colors.yellowAccent.withValues(alpha: 0.95)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5
+            ..isAntiAlias = false,
+        );
+      }
       if (showAll) {
         final text = TextPainter(
           text: TextSpan(
