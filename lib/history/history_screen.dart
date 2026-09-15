@@ -23,6 +23,7 @@ class _HistoryItem {
     required this.notes,
     required this.jobName,
     required this.measurement,
+    required this.location,
   });
 
   final String cropPath;
@@ -32,6 +33,7 @@ class _HistoryItem {
   final String notes;
   final String jobName;
   final String? measurement;
+  final String? location;
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -78,6 +80,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           );
           var notes = raw['notes'] as String? ?? '';
           var jobName = raw['jobName'] as String? ?? '';
+          final location = _locationLabel(raw['location']);
           final acceptedFile = File('$cropPath.accepted.json');
           String? measurement;
           final accepted = await acceptedFile.exists();
@@ -110,6 +113,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               notes: notes,
               jobName: jobName,
               measurement: measurement,
+              location: location,
             ),
           );
         } catch (_) {
@@ -129,6 +133,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final value = raw[key];
     if (value is! num) throw FormatException('Invalid history field: $key');
     return value.toInt();
+  }
+
+  static String? _locationLabel(Object? value) {
+    if (value is! Map) return null;
+    final latitude = value['latitude'];
+    final longitude = value['longitude'];
+    if (latitude is! num || longitude is! num) return null;
+    final accuracy = value['accuracyMetres'];
+    final suffix = accuracy is num
+        ? ' (±${accuracy.toStringAsFixed(0)} m)'
+        : '';
+    return '${latitude.toStringAsFixed(6)}, '
+        '${longitude.toStringAsFixed(6)}$suffix';
   }
 
   Future<void> _open(_HistoryItem item) async {
@@ -312,6 +329,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         : 'Not yet accepted',
                                     if (item.measurement case final value?)
                                       'Measured width: $value',
+                                    if (item.location case final value?)
+                                      'Location: $value',
                                     if (item.notes.isNotEmpty) item.notes,
                                   ].join('\n'),
                                 ),

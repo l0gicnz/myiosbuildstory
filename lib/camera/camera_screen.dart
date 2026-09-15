@@ -94,7 +94,8 @@ class _CameraScreenState extends State<CameraScreen>
         await _discardCapture(path);
         return;
       }
-      await _openImage(path, jobName: jobName);
+      final location = await _locationSafely();
+      await _openImage(path, jobName: jobName, location: location);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -130,7 +131,8 @@ class _CameraScreenState extends State<CameraScreen>
         _error = null;
       });
       final path = await _service.importImage(picked.path);
-      await _openImage(path, jobName: jobName);
+      final location = await _locationSafely();
+      await _openImage(path, jobName: jobName, location: location);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -177,14 +179,30 @@ class _CameraScreenState extends State<CameraScreen>
     return value?.trim();
   }
 
-  Future<void> _openImage(String path, {String? jobName}) async {
+  Future<Map<String, Object?>?> _locationSafely() async {
+    try {
+      return await _service.currentLocation();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openImage(
+    String path, {
+    String? jobName,
+    Map<String, Object?>? location,
+  }) async {
     _inspecting = true;
     _syncCamera();
     final source = await CropService.prepare(path);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => InspectionScreen(source: source, jobName: jobName),
+        builder: (_) => InspectionScreen(
+          source: source,
+          jobName: jobName,
+          location: location,
+        ),
       ),
     );
   }

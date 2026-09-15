@@ -82,7 +82,16 @@ void main() {
         x: 790,
         y: 590,
       );
-      final path = await CropService.extract(source, s);
+      final path = await CropService.extract(
+        source,
+        s,
+        jobName: 'Pole 12',
+        location: {
+          'latitude': -36.8485,
+          'longitude': 174.7633,
+          'accuracyMetres': 4.5,
+        },
+      );
       final crop = img.decodePng(File(path).readAsBytesSync())!;
       expect((crop.width, crop.height), (512, 512));
       for (final p in crop) {
@@ -95,6 +104,9 @@ void main() {
       for (final entry in s.toJson().entries) {
         expect(metadata[entry.key], entry.value);
       }
+      expect(metadata['jobName'], 'Pole 12');
+      expect(metadata['location']['latitude'], -36.8485);
+      expect(metadata['location']['longitude'], 174.7633);
     },
   );
 }

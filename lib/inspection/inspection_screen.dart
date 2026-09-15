@@ -8,9 +8,15 @@ import 'crop_preview_screen.dart';
 import '../settings/app_settings.dart';
 
 class InspectionScreen extends StatefulWidget {
-  const InspectionScreen({super.key, required this.source, this.jobName});
+  const InspectionScreen({
+    super.key,
+    required this.source,
+    this.jobName,
+    this.location,
+  });
   final InspectionImage source;
   final String? jobName;
+  final Map<String, Object?>? location;
   @override
   State<InspectionScreen> createState() => _InspectionScreenState();
 }
@@ -27,6 +33,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
         widget.source,
         selection,
         jobName: widget.jobName,
+        location: widget.location,
       );
       if (!mounted) return;
       await Navigator.of(context).push(

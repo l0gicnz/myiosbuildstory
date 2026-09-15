@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 
 class CameraService {
@@ -48,5 +50,40 @@ class CameraService {
         '${directory.path}/${DateTime.now().microsecondsSinceEpoch}$extension';
     await source.copy(destination);
     return destination;
+  }
+
+  /// Returns a JSON-safe snapshot of the phone's location, or null when the
+  /// user declines access or location services are unavailable.
+  Future<Map<String, Object?>?> currentLocation() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return null;
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      return {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'accuracyMetres': position.accuracy,
+        'altitudeMetres': position.altitude,
+        'capturedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+    } on TimeoutException {
+      return null;
+    } on LocationServiceDisabledException {
+      return null;
+    } on PermissionDeniedException {
+      return null;
+    }
   }
 }

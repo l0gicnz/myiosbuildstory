@@ -32,6 +32,7 @@ class DetectionStore {
         'maskPath': maskPath,
         'confidence': selected.confidence,
         'classId': selected.classId,
+        'detectionIndex': selected.index,
         'maskArea': selected.maskArea,
         'segmentationWidthPx': selected.segmentationWidth,
         'selectedCropX': result.selectedPoint.dx,

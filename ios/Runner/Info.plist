@@ -4,8 +4,10 @@
 <dict>
     <key>NSCameraUsageDescription</key>
     <string>Photograph conductors for full-resolution inspection and cropping.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Select existing conductor photographs for inspection and cropping.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Select existing conductor photographs for inspection and cropping.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Save the phone location with each inspection for field records.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

@@ -79,9 +79,12 @@ class CropService {
     InspectionImage source,
     CropSelection selection, {
     String? jobName,
-  }) => compute(_extract, (source, selection, jobName));
-  static String _extract((InspectionImage, CropSelection, String?) request) {
-    final (source, s, jobName) = request;
+    Map<String, Object?>? location,
+  }) => compute(_extract, (source, selection, jobName, location));
+  static String _extract(
+    (InspectionImage, CropSelection, String?, Map<String, Object?>?) request,
+  ) {
+    final (source, s, jobName, location) = request;
     final decoded = img.decodePng(File(source.path).readAsBytesSync());
     if (decoded == null ||
         decoded.width != s.sourceWidth ||
@@ -101,11 +104,12 @@ class CropService {
     File('$path.json').writeAsStringSync(
       jsonEncode({
         ...s.toJson(),
-        if (jobName != null && jobName.trim().isNotEmpty)
-          'jobName': jobName.trim(),
+        if (jobName case final name? when name.trim().isNotEmpty)
+          'jobName': name.trim(),
         'originalPath': source.originalPath,
         'uprightPath': source.path,
         'cropPath': path,
+        ...?location == null ? null : {'location': location},
       }),
       flush: true,
     );
