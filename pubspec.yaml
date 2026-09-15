@@ -39,6 +39,7 @@ dependencies:
   image: ^4.10.1
   path_provider: ^2.1.6
   flutter_onnxruntime: ^1.8.5
+  share_plus: ^13.3.0
 
 dev_dependencies:
   flutter_test:

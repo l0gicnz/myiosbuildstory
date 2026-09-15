@@ -10,13 +10,15 @@ class DetectionStore {
   static Future<void> save(
     String cropPath,
     ConductorDetectionResult result,
-    Map<String, Object> cropMetadata,
-  ) => compute(_save, (cropPath, result, cropMetadata));
+    Map<String, Object> cropMetadata, {
+    ConductorDetection? selectedDetection,
+  }) => compute(_save, (cropPath, result, cropMetadata, selectedDetection));
   static void _save(
-    (String, ConductorDetectionResult, Map<String, Object>) request,
+    (String, ConductorDetectionResult, Map<String, Object>, ConductorDetection?)
+    request,
   ) {
-    final (cropPath, result, metadata) = request;
-    final selected = result.selectedDetection;
+    final (cropPath, result, metadata, explicitSelection) = request;
+    final selected = explicitSelection ?? result.selectedDetection;
     if (selected == null) throw StateError('No selected detection to accept.');
     final mask = img.Image(width: 512, height: 512, numChannels: 1);
     for (final pixel in mask) {

@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../image_processing/crop_service.dart';
 import '../ml/conductor_detector.dart';
 import '../ml/conductor_detection.dart';
 import '../ml/detection_selector.dart';
 import '../ml/detection_store.dart';
+import '../ml/model_config.dart';
+import '../settings/app_settings.dart';
 import 'conductor_overlay.dart';
 import 'inspection_screen.dart';
 
@@ -17,16 +21,28 @@ class CropPreviewScreen extends StatefulWidget {
     super.key,
     required this.path,
     required this.selection,
+    this.jobName,
+    this.initialNotes = '',
   });
   final String path;
   final CropSelection selection;
+  final String? jobName;
+  final String initialNotes;
   @override
   State<CropPreviewScreen> createState() => _CropPreviewScreenState();
 }
 
 class _CropPreviewScreenState extends State<CropPreviewScreen> {
-  final _detector = ConductorDetector();
+  final _detector = ConductorDetector(
+    config: conductorModelConfig.copyWith(
+      minimumConfidence: AppSettings.instance.minimumConfidence,
+      maskThreshold: AppSettings.instance.maskThreshold,
+      maximumPointDistance: AppSettings.instance.maximumPointDistance,
+    ),
+  );
+  final _notesController = TextEditingController();
   ConductorDetectionResult? _result;
+  ConductorDetection? _selectedDetection;
   bool _busy = false, _debug = false, _accepted = false;
   String? _error;
   double? _millimetresPerPixel;
@@ -34,6 +50,8 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   @override
   void initState() {
     super.initState();
+    _notesController.text = widget.initialNotes;
+    AppSettings.instance.addListener(_settingsChanged);
     // Load the native graph while the crop is being reviewed so the first
     // analysis does not pay the model startup cost.
     unawaited(
@@ -41,6 +59,10 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         debugPrint('Detector warm-up: $error');
       }),
     );
+  }
+
+  void _settingsChanged() {
+    if (mounted) setState(() {});
   }
 
   Offset get _point => DetectionSelector.cropRelativePoint(
@@ -55,6 +77,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       _busy = true;
       _error = null;
       _result = null;
+      _selectedDetection = null;
       _accepted = false;
     });
     try {
@@ -72,8 +95,12 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
 
   Future<void> _accept() async {
     final result = _result;
-    final selected = result?.selectedDetection;
+    final selected = _selectedDetection ?? result?.selectedDetection;
     if (selected == null) return;
+    final widthMm = _millimetresPerPixel == null
+        ? null
+        : selected.segmentationWidth * _millimetresPerPixel!;
+    final isInches = AppSettings.instance.unit == MeasurementUnit.inches;
     setState(() {
       _busy = true;
       _error = null;
@@ -81,11 +108,17 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     try {
       await DetectionStore.save(widget.path, result!, {
         ...widget.selection.toJson(),
+        if (widget.jobName?.trim().isNotEmpty == true)
+          'jobName': widget.jobName!.trim(),
+        'notes': _notesController.text.trim(),
+        'measurementUnit': AppSettings.instance.unit.name,
         if (_millimetresPerPixel case final ratio?) ...{
           'millimetresPerPixel': ratio,
           'segmentationWidthMm': selected.segmentationWidth * ratio,
+          if (widthMm case final mm?)
+            'displayedWidth': isInches ? mm / 25.4 : mm,
         },
-      });
+      }, selectedDetection: selected);
       if (mounted) setState(() => _accepted = true);
     } catch (e) {
       if (mounted) setState(() => _error = 'Could not save acceptance: $e');
@@ -154,8 +187,110 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     setState(() => _millimetresPerPixel = values.$1 / values.$2);
   }
 
+  Future<void> _share() async {
+    final result = _result;
+    final selected = _selectedDetection ?? result?.selectedDetection;
+    final widthMm = selected == null || _millimetresPerPixel == null
+        ? null
+        : selected.segmentationWidth * _millimetresPerPixel!;
+    final inInches = AppSettings.instance.unit == MeasurementUnit.inches;
+    final displayedWidth = widthMm == null
+        ? null
+        : inInches
+        ? widthMm / 25.4
+        : widthMm;
+    final files = <XFile>[XFile(widget.path)];
+    final maskPath = '${widget.path}.accepted-mask.png';
+    if (await File(maskPath).exists()) files.add(XFile(maskPath));
+    final lines = <String>[
+      if (widget.jobName?.trim().isNotEmpty == true)
+        'Job: ${widget.jobName!.trim()}',
+      'Crop: ${widget.selection.cropWidth} x ${widget.selection.cropHeight} px',
+      if (selected != null) ...[
+        'Segmented width: ${selected.segmentationWidth} px',
+        'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}%',
+        if (displayedWidth case final display?)
+          'Estimated width: ${display.toStringAsFixed(inInches ? 2 : 1)} ${inInches ? 'in' : 'mm'}',
+      ],
+      if (_notesController.text.trim().isNotEmpty)
+        'Notes: ${_notesController.text.trim()}',
+    ];
+    final report = <String, Object?>{
+      'jobName': widget.jobName?.trim(),
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'selection': widget.selection.toJson(),
+      'notes': _notesController.text.trim(),
+      'measurementUnit': AppSettings.instance.unit.name,
+      if (selected != null) ...{
+        'confidence': selected.confidence,
+        'segmentationWidthPx': selected.segmentationWidth,
+        'maskAreaPx': selected.maskArea,
+        'boundingBoxXYXY': [
+          selected.boundingBox.left,
+          selected.boundingBox.top,
+          selected.boundingBox.right,
+          selected.boundingBox.bottom,
+        ],
+        ...?widthMm == null ? null : {'widthMm': widthMm},
+        ...?displayedWidth == null ? null : {'displayedWidth': displayedWidth},
+      },
+    };
+    final reportBase = '${widget.path}.report';
+    final jsonPath = '$reportBase.json';
+    final csvPath = '$reportBase.csv';
+    final textPath = '$reportBase.txt';
+    await File(jsonPath).writeAsString(jsonEncode(report), flush: true);
+    await File(csvPath).writeAsString(
+      '''jobName,createdAt,segmentationWidthPx,widthMm,confidence,maskAreaPx
+"${_csv(widget.jobName ?? '')}","${report['createdAt']}",${selected?.segmentationWidth ?? ''},${widthMm ?? ''},${selected?.confidence ?? ''},${selected?.maskArea ?? ''}
+''',
+      flush: true,
+    );
+    await File(textPath).writeAsString(
+      '${lines.join('\n')}\n\nJSON and CSV data attached.',
+      flush: true,
+    );
+    files.addAll([XFile(textPath), XFile(jsonPath), XFile(csvPath)]);
+    final legacyLines = <String>[
+      if (widget.jobName?.trim().isNotEmpty == true)
+        'Job: ${widget.jobName!.trim()}',
+      'Crop: ${widget.selection.cropWidth} × ${widget.selection.cropHeight} px',
+      if (selected != null) ...[
+        'Segmented width: ${selected.segmentationWidth} px',
+        'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}%',
+        if (_millimetresPerPixel case final ratio?)
+          'Estimated width: ${(selected.segmentationWidth * ratio).toStringAsFixed(1)} mm',
+      ],
+      if (_notesController.text.trim().isNotEmpty)
+        'Notes: ${_notesController.text.trim()}',
+    ];
+    // Keep the share summary built above as the source of the text report.
+    legacyLines;
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          title: widget.jobName?.trim().isNotEmpty == true
+              ? widget.jobName!.trim()
+              : 'Powerline Measure inspection',
+          text: lines.join('\n'),
+          files: files,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not share report: $e')));
+      }
+    }
+  }
+
+  static String _csv(String value) => value.replaceAll('"', '""');
+
   @override
   void dispose() {
+    AppSettings.instance.removeListener(_settingsChanged);
+    _notesController.dispose();
     unawaited(
       _detector.dispose().catchError((Object e) {
         debugPrint('Detector cleanup: $e');
@@ -166,12 +301,25 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = _result?.selectedDetection;
+    final selected = _selectedDetection ?? _result?.selectedDetection;
     final widthMm = selected == null || _millimetresPerPixel == null
         ? null
         : selected.segmentationWidth * _millimetresPerPixel!;
+    final inInches = AppSettings.instance.unit == MeasurementUnit.inches;
+    final displayedWidth = widthMm == null
+        ? null
+        : inInches
+        ? widthMm / 25.4
+        : widthMm;
+    final unitLabel = inInches ? 'in' : 'mm';
     return Scaffold(
-      appBar: AppBar(title: const Text('Conductor inspection')),
+      appBar: AppBar(
+        title: Text(
+          widget.jobName?.isNotEmpty == true
+              ? '${widget.jobName} - Inspection'
+              : 'Conductor inspection',
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -207,6 +355,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                               ),
                               ConductorOverlay(
                                 result: _result,
+                                selectedDetection: _selectedDetection,
                                 point: _point,
                                 showAll: _debug,
                                 width: widget.selection.cropWidth,
@@ -237,6 +386,15 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                     Text(
                       'Tap in crop: (${_point.dx.toInt()}, ${_point.dy.toInt()})',
                     ),
+                    TextField(
+                      controller: _notesController,
+                      enabled: !_busy,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Inspection notes (optional)',
+                        hintText: 'Pole, span, conductor, or site details',
+                      ),
+                    ),
                     if (_busy) const Text('Processing on device...'),
                     if (_error != null)
                       SelectableText(
@@ -255,12 +413,36 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         ),
                         Text(
                           'Segmented width: ${selected.segmentationWidth} px'
-                          '${widthMm == null ? '' : ' (${widthMm.toStringAsFixed(1)} mm)'}',
+                          '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
                         ),
                       ] else
                         const Text(
                           'No conductor detected near the selected point.\nTry tapping closer to the conductor or capturing a sharper image.',
                           textAlign: TextAlign.center,
+                        ),
+                      if (result.detections.where((d) => d.isValid).length > 1)
+                        DropdownButton<int>(
+                          value: selected?.index,
+                          hint: const Text('Choose detected conductor'),
+                          items: [
+                            for (final detection in result.detections.where(
+                              (d) => d.isValid,
+                            ))
+                              DropdownMenuItem(
+                                value: detection.index,
+                                child: Text(
+                                  'Conductor #${detection.index} - '
+                                  '${(detection.confidence * 100).toStringAsFixed(1)}%',
+                                ),
+                              ),
+                          ],
+                          onChanged: (index) {
+                            if (index == null) return;
+                            setState(
+                              () => _selectedDetection = result.detections
+                                  .firstWhere((d) => d.index == index),
+                            );
+                          },
                         ),
                     ],
                     if (_accepted)
@@ -297,6 +479,11 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                                   : 'Adjust scale',
                             ),
                           ),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _share,
+                          icon: const Icon(Icons.ios_share),
+                          label: const Text('Share'),
+                        ),
                         TextButton(
                           onPressed: _busy
                               ? null

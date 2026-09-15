@@ -134,11 +134,14 @@ class ConductorDetector {
       outputs = await _session!.run({config.inputName!: input});
       timer.stop();
       final tensors = <String, ModelTensor>{};
+      final isApple =
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS;
       final requiredOutputs = <String>{
         config.boxesName!,
         config.scoresName!,
         config.masksName!,
-        if (config.labelsName != null) config.labelsName!,
+        if (config.labelsName != null && !isApple) config.labelsName!,
       };
       for (final entry in outputs.entries) {
         if (!requiredOutputs.contains(entry.key)) {
@@ -153,12 +156,25 @@ class ConductorDetector {
         // Avoid the plugin's null-to-List cast and represent it as [] instead.
         final values = entry.value.shape.any((dimension) => dimension == 0)
             ? <num>[]
-            : (await entry.value.asFlattenedList()).cast<num>();
+            : await _readOutputValues(entry.key, entry.value);
         tensors[entry.key] = ModelTensor(
           entry.value.shape,
           values,
           entry.value.dataType.name,
         );
+      }
+      if (isApple && config.labelsName != null) {
+        final boxes = tensors[config.boxesName!];
+        if (boxes != null && boxes.shape.length == 2) {
+          // This export has one foreground class (1). The iOS Swift bridge
+          // cannot reliably read this model's int64 labels output, so retain
+          // the known class semantics without extracting that tensor.
+          tensors[config.labelsName!] = ModelTensor(
+            [boxes.shape[0]],
+            List<num>.filled(boxes.shape[0], 1),
+            'int64',
+          );
+        }
       }
       final detections = await compute(_decode, (
         tensors,
@@ -196,6 +212,21 @@ class ConductorDetector {
 
   static PreparedInput _prepare((Uint8List, ModelConfig) request) =>
       ModelPreprocessor.prepare(request.$1, request.$2);
+
+  static Future<List<num>> _readOutputValues(
+    String name,
+    OrtValue value,
+  ) async {
+    try {
+      return (await value.asFlattenedList()).cast<num>();
+    } catch (error) {
+      throw FormatException(
+        'Could not read ONNX output "$name" with shape ${value.shape} '
+        'and type ${value.dataType.name}: $error',
+      );
+    }
+  }
+
   static List<ConductorDetection> _decode(
     (Map<String, ModelTensor>, ModelConfig, Offset) request,
   ) => MaskPostprocessor.decode(request.$1, request.$2, request.$3);

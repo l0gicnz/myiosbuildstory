@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../image_processing/crop_service.dart';
+import '../history/history_screen.dart';
 import '../inspection/inspection_screen.dart';
+import '../settings/app_settings.dart';
+import '../settings/settings_screen.dart';
 import 'camera_service.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -20,6 +25,9 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _queue = Future.value();
   bool _active = true, _inspecting = false, _busy = false;
   double _zoom = 1, _zoomAtGestureStart = 1, _minZoom = 1, _maxZoom = 1;
+  FlashMode _flashMode = FlashMode.off;
+  Offset? _focusPoint;
+  Timer? _focusTimer;
   String? _error;
   @override
   void initState() {
@@ -49,6 +57,7 @@ class _CameraScreenState extends State<CameraScreen>
           _minZoom = minZoom;
           _maxZoom = maxZoom;
           _zoom = minZoom;
+          _flashMode = FlashMode.off;
           _error = null;
         });
       } catch (e) {
@@ -71,13 +80,15 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null || _busy) return;
+    final jobName = await _promptJobName();
+    if (!mounted || jobName == null) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
       final path = await _service.capture(controller);
-      await _openImage(path);
+      await _openImage(path, jobName: jobName);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -95,6 +106,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _pickExisting() async {
     if (_busy) return;
+    final jobName = await _promptJobName();
+    if (!mounted || jobName == null) return;
     try {
       final picked = await _picker.pickImage(source: ImageSource.gallery);
       if (picked == null || !mounted) return;
@@ -103,12 +116,11 @@ class _CameraScreenState extends State<CameraScreen>
         _error = null;
       });
       final path = await _service.importImage(picked.path);
-      await _openImage(path);
+      await _openImage(path, jobName: jobName);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open image: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not open image: $e')));
       }
     } finally {
       _inspecting = false;
@@ -119,14 +131,46 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Future<void> _openImage(String path) async {
+  Future<String?> _promptJobName() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New inspection'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'Job or site name (optional)',
+            hintText: 'e.g. Main Street pole 12',
+          ),
+          onSubmitted: (_) => Navigator.of(context).pop(controller.text),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value?.trim();
+  }
+
+  Future<void> _openImage(String path, {String? jobName}) async {
     _inspecting = true;
     _syncCamera();
     final source = await CropService.prepare(path);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => InspectionScreen(source: source),
+        builder: (_) => InspectionScreen(source: source, jobName: jobName),
       ),
     );
   }
@@ -143,7 +187,47 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  Widget _buildCameraPreview() {
+  Future<void> _focusAt(Offset position, Size size) async {
+    final controller = _controller;
+    if (controller == null || size.width <= 0 || size.height <= 0) return;
+    _focusTimer?.cancel();
+    if (mounted) setState(() => _focusPoint = position);
+    _focusTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _focusPoint = null);
+    });
+    try {
+      await controller.setFocusPoint(
+        Offset(
+          (position.dx / size.width).clamp(0, 1),
+          (position.dy / size.height).clamp(0, 1),
+        ),
+      );
+    } catch (_) {
+      // Fixed-focus or restricted camera backends may not support tap focus.
+    }
+  }
+
+  Future<void> _cycleFlash() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final next = switch (_flashMode) {
+      FlashMode.off => FlashMode.auto,
+      FlashMode.auto => FlashMode.always,
+      _ => FlashMode.off,
+    };
+    try {
+      await controller.setFlashMode(next);
+      if (mounted) setState(() => _flashMode = next);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Flash control is unavailable.')),
+        );
+      }
+    }
+  }
+
+  Widget _buildCameraPreview(Size size) {
     final controller = _controller!;
     return Stack(
       fit: StackFit.expand,
@@ -156,33 +240,67 @@ class _CameraScreenState extends State<CameraScreen>
               _setZoom(_zoomAtGestureStart * details.scale);
             }
           },
+          onTapUp: (details) => _focusAt(details.localPosition, size),
           child: CameraPreview(controller),
         ),
-        if (_maxZoom > _minZoom)
+        if (AppSettings.instance.showCameraGrid)
+          const IgnorePointer(child: _CameraGrid()),
+        if (_focusPoint case final point?)
           Positioned(
-            right: 12,
-            top: 12,
-            child: Column(
-              children: [
+            left: point.dx - 28,
+            top: point.dy - 28,
+            child: IgnorePointer(
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.yellowAccent, width: 2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          left: 12,
+          top: 12,
+          child: Row(
+            children: [
+              IconButton.filledTonal(
+                tooltip: 'Flash: ${_flashMode.name}',
+                onPressed: _cycleFlash,
+                icon: Icon(switch (_flashMode) {
+                  FlashMode.off => Icons.flash_off,
+                  FlashMode.auto => Icons.flash_auto,
+                  _ => Icons.flash_on,
+                }),
+              ),
+              if (_maxZoom > _minZoom) ...[
+                const SizedBox(width: 8),
                 IconButton.filledTonal(
                   tooltip: 'Reset camera zoom',
                   onPressed: () => _setZoom(_minZoom),
                   icon: const Icon(Icons.zoom_out_map),
                 ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black54,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    child: Text('${_zoom.toStringAsFixed(1)}×'),
-                  ),
-                ),
               ],
+            ],
+          ),
+        ),
+        if (_maxZoom > _minZoom)
+          Positioned(
+            right: 12,
+            top: 12,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                child: Text('${_zoom.toStringAsFixed(1)}x'),
+              ),
             ),
           ),
       ],
@@ -191,6 +309,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void dispose() {
+    _focusTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _active = false;
     _controller?.dispose();
@@ -200,7 +319,33 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Powerline Measure')),
+    appBar: AppBar(
+      title: const Text('Powerline Measure'),
+      actions: [
+        IconButton(
+          tooltip: 'Inspection history',
+          onPressed: _busy
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HistoryScreen(),
+                  ),
+                ),
+          icon: const Icon(Icons.history),
+        ),
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: _busy
+              ? null
+              : () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                ),
+          icon: const Icon(Icons.settings_outlined),
+        ),
+      ],
+    ),
     body: SafeArea(
       child: Column(
         children: [
@@ -212,7 +357,7 @@ class _CameraScreenState extends State<CameraScreen>
                       children: [
                         CircularProgressIndicator(),
                         SizedBox(height: 16),
-                        Text('Preparing full-resolution photo…'),
+                        Text('Preparing full-resolution photo...'),
                       ],
                     )
                   : _error != null
@@ -229,9 +374,12 @@ class _CameraScreenState extends State<CameraScreen>
                         ],
                       ),
                     )
-              : _controller == null
+                  : _controller == null
                   ? const CircularProgressIndicator()
-                  : _buildCameraPreview(),
+                  : LayoutBuilder(
+                      builder: (context, constraints) =>
+                          _buildCameraPreview(constraints.biggest),
+                    ),
             ),
           ),
           Padding(
@@ -260,4 +408,29 @@ class _CameraScreenState extends State<CameraScreen>
       ),
     ),
   );
+}
+
+class _CameraGrid extends StatelessWidget {
+  const _CameraGrid();
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(painter: _GridPainter());
+}
+
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.35)
+      ..strokeWidth = 1;
+    for (final fraction in [1 / 3, 2 / 3]) {
+      final x = size.width * fraction;
+      final y = size.height * fraction;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

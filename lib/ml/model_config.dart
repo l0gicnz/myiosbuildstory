@@ -110,6 +110,40 @@ class ModelConfig {
       );
     }
   }
+
+  ModelConfig copyWith({
+    double? minimumConfidence,
+    double? maskThreshold,
+    double? maximumPointDistance,
+  }) => ModelConfig(
+    assetPath: assetPath,
+    confirmed: confirmed,
+    inputName: inputName,
+    boxesName: boxesName,
+    scoresName: scoresName,
+    labelsName: labelsName,
+    masksName: masksName,
+    width: width,
+    height: height,
+    layout: layout,
+    dataType: dataType,
+    batchDimension: batchDimension,
+    bgr: bgr,
+    scale: scale,
+    mean: mean,
+    std: std,
+    boxFormat: boxFormat,
+    normalizedBoxes: normalizedBoxes,
+    maskSpace: maskSpace,
+    maskLogits: maskLogits,
+    maskChannel: maskChannel,
+    maskChannelFromLabel: maskChannelFromLabel,
+    conductorClassIds: conductorClassIds,
+    minimumConfidence: minimumConfidence ?? this.minimumConfidence,
+    maskThreshold: maskThreshold ?? this.maskThreshold,
+    maximumPointDistance: maximumPointDistance ?? this.maximumPointDistance,
+    minimumMaskArea: minimumMaskArea,
+  );
 }
 
 // Inspected PyTorch 2.4.1 export, opset 18. The graph performs ImageNet
@@ -120,9 +154,7 @@ const conductorModelConfig = ModelConfig(
   inputName: 'image',
   boxesName: 'boxes',
   scoresName: 'scores',
-  // The model has only one foreground class (conductor). Avoid reading the
-  // int64 labels tensor because the iOS Swift bridge can return null for it.
-  labelsName: null,
+  labelsName: 'labels',
   masksName: 'masks',
-  conductorClassIds: [],
+  conductorClassIds: [1],
 );

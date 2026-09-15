@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../image_processing/crop_service.dart';
 import 'interactive_image.dart';
 import 'crop_preview_screen.dart';
+import '../settings/app_settings.dart';
 
 class InspectionScreen extends StatefulWidget {
-  const InspectionScreen({super.key, required this.source});
+  const InspectionScreen({super.key, required this.source, this.jobName});
   final InspectionImage source;
+  final String? jobName;
   @override
   State<InspectionScreen> createState() => _InspectionScreenState();
 }
@@ -19,13 +23,31 @@ class _InspectionScreenState extends State<InspectionScreen> {
     if (selection == null || _busy) return;
     setState(() => _busy = true);
     try {
-      final path = await CropService.extract(widget.source, selection);
+      final path = await CropService.extract(
+        widget.source,
+        selection,
+        jobName: widget.jobName,
+      );
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => CropPreviewScreen(path: path, selection: selection),
+          builder: (_) => CropPreviewScreen(
+            path: path,
+            selection: selection,
+            jobName: widget.jobName,
+          ),
         ),
       );
+      if (!AppSettings.instance.retainOriginalPhotos) {
+        for (final path in [widget.source.originalPath, widget.source.path]) {
+          try {
+            await File(path).delete();
+          } on FileSystemException {
+            // The crop remains available even if an optional source file is
+            // already gone.
+          }
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -39,7 +61,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Inspect photo'),
+      title: Text(
+        widget.jobName?.isNotEmpty == true ? widget.jobName! : 'Inspect photo',
+      ),
       actions: [
         TextButton(
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
@@ -53,7 +77,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Padding(
             padding: const EdgeInsets.all(8),
             child: Text(
-              '${widget.source.width} × ${widget.source.height} source pixels\nPinch to zoom • Drag to pan • Tap a conductor',
+              '${widget.source.width} x ${widget.source.height} source pixels\nPinch to zoom - Drag to pan - Tap a conductor',
               textAlign: TextAlign.center,
             ),
           ),
@@ -93,7 +117,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.crop),
-                  label: Text(_busy ? 'Extracting…' : 'Open crop'),
+                  label: Text(_busy ? 'Extracting...' : 'Open crop'),
                 ),
               ],
             ),
@@ -106,4 +130,4 @@ class _InspectionScreenState extends State<InspectionScreen> {
 
 String selectionDescription(CropSelection s) =>
     'Selected pixel: (${s.selectedX}, ${s.selectedY})\n'
-    'Crop origin: (${s.cropX}, ${s.cropY}) • ${s.cropWidth} × ${s.cropHeight} px';
+    'Crop origin: (${s.cropX}, ${s.cropY}) - ${s.cropWidth} x ${s.cropHeight} px';

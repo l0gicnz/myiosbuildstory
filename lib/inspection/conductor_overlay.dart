@@ -6,12 +6,14 @@ class ConductorOverlay extends StatefulWidget {
   const ConductorOverlay({
     super.key,
     required this.result,
+    this.selectedDetection,
     required this.point,
     required this.showAll,
     required this.width,
     required this.height,
   });
   final ConductorDetectionResult? result;
+  final ConductorDetection? selectedDetection;
   final Offset point;
   final bool showAll;
   final int width, height;
@@ -70,6 +72,7 @@ class _ConductorOverlayState extends State<ConductorOverlay> {
     child: CustomPaint(
       painter: _OverlayPainter(
         widget.result,
+        widget.selectedDetection,
         widget.point,
         widget.showAll,
         widget.width,
@@ -83,6 +86,7 @@ class _ConductorOverlayState extends State<ConductorOverlay> {
 class _OverlayPainter extends CustomPainter {
   _OverlayPainter(
     this.result,
+    this.selectedDetection,
     this.point,
     this.showAll,
     this.width,
@@ -90,6 +94,7 @@ class _OverlayPainter extends CustomPainter {
     this.paths,
   );
   final ConductorDetectionResult? result;
+  final ConductorDetection? selectedDetection;
   final Offset point;
   final bool showAll;
   final int width, height;
@@ -99,7 +104,7 @@ class _OverlayPainter extends CustomPainter {
     canvas.save();
     canvas.scale(size.width / width, size.height / height);
     canvas.clipRect(Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()));
-    final selected = result?.selectedDetection;
+    final selected = selectedDetection ?? result?.selectedDetection;
     for (final d in result?.detections ?? <ConductorDetection>[]) {
       if (!showAll && d != selected) continue;
       final color = d == selected
@@ -167,6 +172,7 @@ class _OverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _OverlayPainter oldDelegate) =>
       oldDelegate.result != result ||
+      oldDelegate.selectedDetection != selectedDetection ||
       oldDelegate.showAll != showAll ||
       oldDelegate.point != point;
 }
