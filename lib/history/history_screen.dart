@@ -175,6 +175,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static double? _doubleValue(Object? value) =>
       value is num && value.isFinite ? value.toDouble() : null;
 
+  static String _cameraMetadataLabel(Map<String, Object?>? metadata) {
+    final fov =
+        _doubleValue(metadata?['correctedFovDegrees']) ??
+        _doubleValue(metadata?['baseFovDegrees']);
+    if (metadata == null || fov == null || fov <= 0 || fov >= 180) {
+      return 'Camera metadata unavailable';
+    }
+    final model = metadata['cameraModel'] as String? ?? 'iPhone';
+    return 'Camera: $model · ${fov.toStringAsFixed(1)}° FOV';
+  }
+
   Future<void> _open(_HistoryItem item) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -365,6 +376,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                         case final distance?)
                                       'Rangefinder distance: '
                                           '${distance.toStringAsFixed(2)} m',
+                                    _cameraMetadataLabel(item.cameraMetadata),
                                     if (item.notes.isNotEmpty) item.notes,
                                   ].join('\n'),
                                 ),

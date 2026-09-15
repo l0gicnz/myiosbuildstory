@@ -208,10 +208,31 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
 
   String _cameraScaleAvailabilityMessage() {
     final distance = widget.rangefinderDistanceMetres;
-    if (distance == null || distance <= 0 || _cameraScale() != null) return '';
-    return 'Camera model/FOV data unavailable. The rangefinder distance was '
-        'saved, but automatic scale could not be calculated. Use two-point '
-        'calibration instead.';
+    final metadata = widget.cameraMetadata;
+    final fov =
+        _doubleValue(metadata?['correctedFovDegrees']) ??
+        _doubleValue(metadata?['baseFovDegrees']);
+    if (metadata != null && fov != null && fov > 0 && fov < 180) return '';
+    if (distance != null && distance > 0) {
+      return 'Camera model/FOV data unavailable. The rangefinder distance was '
+          'saved, but automatic scale could not be calculated. Use two-point '
+          'calibration instead.';
+    }
+    return 'Camera model/FOV data unavailable. Automatic scale is unavailable; '
+        'use two-point calibration instead.';
+  }
+
+  String _cameraMetadataStatus() {
+    final metadata = widget.cameraMetadata;
+    final fov =
+        _doubleValue(metadata?['correctedFovDegrees']) ??
+        _doubleValue(metadata?['baseFovDegrees']);
+    if (metadata == null || fov == null || fov <= 0 || fov >= 180) {
+      return 'Camera metadata: unavailable';
+    }
+    final model = metadata['cameraModel'] as String?;
+    return 'Camera metadata: ${model ?? 'iPhone'} · '
+        '${fov.toStringAsFixed(1)}° FOV';
   }
 
   void _settingsChanged() {
@@ -818,6 +839,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         _rangefinderDescription(),
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
+                    if (widget.rangefinderDistanceMetres == null)
+                      const Text('Rangefinder distance: not entered'),
+                    Text(_cameraMetadataStatus()),
                     if (_cameraScaleAvailabilityMessage().isNotEmpty)
                       Text(
                         _cameraScaleAvailabilityMessage(),
