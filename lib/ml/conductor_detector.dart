@@ -134,7 +134,17 @@ class ConductorDetector {
       outputs = await _session!.run({config.inputName!: input});
       timer.stop();
       final tensors = <String, ModelTensor>{};
+      final requiredOutputs = <String>{
+        config.boxesName!,
+        config.scoresName!,
+        config.masksName!,
+        if (config.labelsName != null) config.labelsName!,
+      };
       for (final entry in outputs.entries) {
+        if (!requiredOutputs.contains(entry.key)) {
+          _log('Ignoring unconfigured output ${entry.key}.');
+          continue;
+        }
         _log(
           'Output ${entry.key}: ${entry.value.shape} ${entry.value.dataType.name}',
         );

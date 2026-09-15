@@ -120,7 +120,9 @@ const conductorModelConfig = ModelConfig(
   inputName: 'image',
   boxesName: 'boxes',
   scoresName: 'scores',
-  labelsName: 'labels',
+  // The model has only one foreground class (conductor). Avoid reading the
+  // int64 labels tensor because the iOS Swift bridge can return null for it.
+  labelsName: null,
   masksName: 'masks',
-  conductorClassIds: [1],
+  conductorClassIds: [],
 );
