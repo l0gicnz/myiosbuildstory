@@ -68,6 +68,6 @@ Phase 2 real-photo acceptance remains pending: no validation crops were supplied
 
 Android is the primary target. Camera permission text is included for iOS and the Dart camera/storage/processing code also supports iOS; iOS compilation and testing require macOS/Xcode. Desktop and web camera support are not part of Phase 1.
 
-The ONNX plugin supports iOS, but its Apple backend and minimum deployment requirements must be verified when porting. No iOS build has been tested here.
+The ONNX plugin supports iOS 16 and later through its Apple backend. The iOS target is set to 16.0. iOS compilation and physical-device testing require a macOS/Xcode build environment.
 
 Package references: https://pub.dev/packages/camera and https://pub.dev/documentation/image/latest/image/bakeOrientation.html
