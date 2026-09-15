@@ -90,6 +90,7 @@ class _CameraScreenState extends State<CameraScreen>
     });
     String? path;
     try {
+      final cameraMetadata = await _cameraMetadataSafely(controller);
       path = await _service.capture(controller);
       if (!mounted) return;
       final jobName = await _promptJobName(initialValue: _lastJobName);
@@ -102,8 +103,15 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
       _lastJobName = jobName;
+      final distanceMetres = await _promptRangefinderDistance();
       final location = await _locationSafely();
-      await _openImage(path, jobName: jobName, location: location);
+      await _openImage(
+        path,
+        jobName: jobName,
+        location: location,
+        cameraMetadata: cameraMetadata,
+        distanceMetres: distanceMetres,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -196,9 +204,60 @@ class _CameraScreenState extends State<CameraScreen>
     return value?.trim();
   }
 
+  Future<double?> _promptRangefinderDistance() async {
+    final controller = TextEditingController();
+    final value = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rangefinder distance'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Distance to conductor (metres, optional)',
+            hintText: 'e.g. 18.5',
+          ),
+          onSubmitted: (_) {
+            final parsed = double.tryParse(controller.text.trim());
+            if (parsed != null && parsed > 0) {
+              Navigator.of(context).pop(parsed);
+            }
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Skip'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final parsed = double.tryParse(controller.text.trim());
+              if (parsed == null || parsed <= 0) return;
+              Navigator.of(context).pop(parsed);
+            },
+            child: const Text('Use distance'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
+  }
+
   Future<Map<String, Object?>?> _locationSafely() async {
     try {
       return await _service.currentLocation();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, Object?>?> _cameraMetadataSafely(
+    CameraController controller,
+  ) async {
+    try {
+      return await _service.cameraMetadata(controller);
     } catch (_) {
       return null;
     }
@@ -280,6 +339,8 @@ class _CameraScreenState extends State<CameraScreen>
     String path, {
     String? jobName,
     Map<String, Object?>? location,
+    Map<String, Object?>? cameraMetadata,
+    double? distanceMetres,
   }) async {
     _inspecting = true;
     _syncCamera();
@@ -291,6 +352,8 @@ class _CameraScreenState extends State<CameraScreen>
           source: source,
           jobName: jobName,
           location: location,
+          cameraMetadata: cameraMetadata,
+          rangefinderDistanceMetres: distanceMetres,
         ),
       ),
     );

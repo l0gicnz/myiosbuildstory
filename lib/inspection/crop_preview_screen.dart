@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,12 +24,16 @@ class CropPreviewScreen extends StatefulWidget {
     required this.selection,
     this.jobName,
     this.location,
+    this.cameraMetadata,
+    this.rangefinderDistanceMetres,
     this.initialNotes = '',
   });
   final String path;
   final CropSelection selection;
   final String? jobName;
   final Map<String, Object?>? location;
+  final Map<String, Object?>? cameraMetadata;
+  final double? rangefinderDistanceMetres;
   final String initialNotes;
   @override
   State<CropPreviewScreen> createState() => _CropPreviewScreenState();
@@ -51,11 +56,17 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   int _activeCalibrationPoint = 0;
   String? _error;
   double? _millimetresPerPixel;
+  String _scaleSource = 'Not calibrated';
 
   @override
   void initState() {
     super.initState();
     _notesController.text = widget.initialNotes;
+    final cameraScale = _cameraScale();
+    if (cameraScale != null) {
+      _millimetresPerPixel = cameraScale;
+      _scaleSource = 'Camera/FOV estimate';
+    }
     AppSettings.instance.addListener(_settingsChanged);
     // Load the native graph while the crop is being reviewed so the first
     // analysis does not pay the model startup cost.
@@ -129,6 +140,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         );
         _accepted = true;
         _millimetresPerPixel = _doubleValue(decoded['millimetresPerPixel']);
+        _scaleSource =
+            decoded['scaleSource'] as String? ??
+            (_millimetresPerPixel == null ? 'Not calibrated' : 'Saved scale');
       });
     } catch (error) {
       debugPrint('Saved acceptance could not be restored: $error');
@@ -147,6 +161,32 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final accuracy = _doubleValue(location['accuracyMetres']);
     return '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}'
         '${accuracy == null ? '' : ' (±${accuracy.toStringAsFixed(0)} m)'}';
+  }
+
+  double? _cameraScale() {
+    final distance = widget.rangefinderDistanceMetres;
+    final metadata = widget.cameraMetadata;
+    if (distance == null || distance <= 0 || metadata == null) return null;
+    final fov =
+        _doubleValue(metadata['correctedFovDegrees']) ??
+        _doubleValue(metadata['baseFovDegrees']);
+    if (fov == null || fov <= 0 || fov >= 180) return null;
+    final zoom = _doubleValue(metadata['zoomFactor']) ?? 1;
+    if (zoom <= 0) return null;
+    final halfFov = fov * math.pi / 360;
+    final effectiveHalfFov = math.atan(math.tan(halfFov) / zoom);
+    final widthMm = 2 * distance * 1000 * math.tan(effectiveHalfFov);
+    return widthMm / widget.selection.sourceWidth;
+  }
+
+  String _cameraScaleDescription() {
+    final distance = widget.rangefinderDistanceMetres;
+    final fov =
+        _doubleValue(widget.cameraMetadata?['correctedFovDegrees']) ??
+        _doubleValue(widget.cameraMetadata?['baseFovDegrees']);
+    if (distance == null || fov == null) return '';
+    return '${distance.toStringAsFixed(2)} m rangefinder · '
+        '${fov.toStringAsFixed(1)}° FOV';
   }
 
   void _settingsChanged() {
@@ -200,6 +240,14 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
           'jobName': widget.jobName!.trim(),
         'notes': _notesController.text.trim(),
         'measurementUnit': AppSettings.instance.unit.name,
+        'scaleSource': _scaleSource,
+        if (widget.rangefinderDistanceMetres case final distance?
+            when distance > 0)
+          'rangefinderDistanceMetres': distance,
+        ...?widget.cameraMetadata == null
+            ? null
+            : {'cameraMetadata': widget.cameraMetadata!},
+        ...?widget.location == null ? null : {'location': widget.location!},
         if (_millimetresPerPixel case final ratio?) ...{
           'millimetresPerPixel': ratio,
           'segmentationWidthMm': selected.segmentationWidth * ratio,
@@ -363,7 +411,10 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final ratio = value == null ? null : value / pixelDistance;
     setState(() {
       _calibrating = false;
-      if (ratio != null) _millimetresPerPixel = ratio;
+      if (ratio != null) {
+        _millimetresPerPixel = ratio;
+        _scaleSource = 'Two-point calibration';
+      }
     });
     if (ratio != null && _accepted) await _persistCalibration(ratio);
   }
@@ -393,6 +444,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         [_calibrationPoints[1].dx, _calibrationPoints[1].dy],
       ];
       decoded['measurementUnit'] = unit.name;
+      decoded['scaleSource'] = 'Two-point calibration';
       await file.writeAsString(jsonEncode(decoded), flush: true);
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -760,6 +812,12 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           'Segmented width: ${selected.segmentationWidth} px'
                           '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
                         ),
+                        if (_millimetresPerPixel != null)
+                          Text(
+                            'Scale: ${_millimetresPerPixel!.toStringAsFixed(4)} mm/px · $_scaleSource',
+                          ),
+                        if (_scaleSource == 'Camera/FOV estimate')
+                          Text(_cameraScaleDescription()),
                       ] else
                         const Text(
                           'No conductor detected near the selected point.\nTry tapping closer to the conductor or capturing a sharper image.',

@@ -24,6 +24,8 @@ class _HistoryItem {
     required this.jobName,
     required this.measurement,
     required this.location,
+    required this.cameraMetadata,
+    required this.rangefinderDistanceMetres,
   });
 
   final String cropPath;
@@ -34,6 +36,8 @@ class _HistoryItem {
   final String jobName;
   final String? measurement;
   final Map<String, Object?>? location;
+  final Map<String, Object?>? cameraMetadata;
+  final double? rangefinderDistanceMetres;
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -81,6 +85,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           var notes = raw['notes'] as String? ?? '';
           var jobName = raw['jobName'] as String? ?? '';
           var location = _locationMap(raw['location']);
+          var cameraMetadata = _objectMap(raw['cameraMetadata']);
+          var rangefinderDistanceMetres = _doubleValue(
+            raw['rangefinderDistanceMetres'],
+          );
           final acceptedFile = File('$cropPath.accepted.json');
           String? measurement;
           final accepted = await acceptedFile.exists();
@@ -97,6 +105,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 notes = acceptedRaw['notes'] as String? ?? notes;
                 jobName = acceptedRaw['jobName'] as String? ?? jobName;
                 location ??= _locationMap(acceptedRaw['location']);
+                cameraMetadata ??= _objectMap(acceptedRaw['cameraMetadata']);
+                rangefinderDistanceMetres ??= _doubleValue(
+                  acceptedRaw['rangefinderDistanceMetres'],
+                );
               }
               if (width is num) {
                 measurement =
@@ -115,6 +127,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               jobName: jobName,
               measurement: measurement,
               location: location,
+              cameraMetadata: cameraMetadata,
+              rangefinderDistanceMetres: rangefinderDistanceMetres,
             ),
           );
         } catch (_) {
@@ -144,6 +158,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Map<String, Object?>.from(value);
   }
 
+  static Map<String, Object?>? _objectMap(Object? value) =>
+      value is Map ? Map<String, Object?>.from(value) : null;
+
   static String _locationLabel(Map<String, Object?> value) {
     final latitude = value['latitude'] as num;
     final longitude = value['longitude'] as num;
@@ -155,6 +172,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         '${longitude.toStringAsFixed(6)}$suffix';
   }
 
+  static double? _doubleValue(Object? value) =>
+      value is num && value.isFinite ? value.toDouble() : null;
+
   Future<void> _open(_HistoryItem item) async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -163,6 +183,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           selection: item.selection,
           jobName: item.jobName,
           location: item.location,
+          cameraMetadata: item.cameraMetadata,
+          rangefinderDistanceMetres: item.rangefinderDistanceMetres,
           initialNotes: item.notes,
         ),
       ),

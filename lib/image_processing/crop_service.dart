@@ -80,11 +80,29 @@ class CropService {
     CropSelection selection, {
     String? jobName,
     Map<String, Object?>? location,
-  }) => compute(_extract, (source, selection, jobName, location));
+    Map<String, Object?>? cameraMetadata,
+    double? rangefinderDistanceMetres,
+  }) => compute(_extract, (
+    source,
+    selection,
+    jobName,
+    location,
+    cameraMetadata,
+    rangefinderDistanceMetres,
+  ));
   static String _extract(
-    (InspectionImage, CropSelection, String?, Map<String, Object?>?) request,
+    (
+      InspectionImage,
+      CropSelection,
+      String?,
+      Map<String, Object?>?,
+      Map<String, Object?>?,
+      double?,
+    )
+    request,
   ) {
-    final (source, s, jobName, location) = request;
+    final (source, s, jobName, location, cameraMetadata, distanceMetres) =
+        request;
     final decoded = img.decodePng(File(source.path).readAsBytesSync());
     if (decoded == null ||
         decoded.width != s.sourceWidth ||
@@ -110,6 +128,9 @@ class CropService {
         'uprightPath': source.path,
         'cropPath': path,
         ...?location == null ? null : {'location': location},
+        ...?cameraMetadata == null ? null : {'cameraMetadata': cameraMetadata},
+        if (distanceMetres case final distance? when distance > 0)
+          'rangefinderDistanceMetres': distance,
       }),
       flush: true,
     );

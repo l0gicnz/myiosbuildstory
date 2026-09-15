@@ -4,8 +4,13 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
 
 class CameraService {
+  static const _metadataChannel = MethodChannel(
+    'powerline_measure/camera_metadata',
+  );
+
   Future<CameraController> open() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) throw StateError('No camera is available.');
@@ -50,6 +55,17 @@ class CameraService {
         '${directory.path}/${DateTime.now().microsecondsSinceEpoch}$extension';
     await source.copy(destination);
     return destination;
+  }
+
+  Future<Map<String, Object?>?> cameraMetadata(
+    CameraController controller,
+  ) async {
+    if (!Platform.isIOS) return null;
+    final metadata = await _metadataChannel.invokeMapMethod<String, Object?>(
+      'getCameraMetadata',
+      {'cameraName': controller.description.name},
+    );
+    return metadata;
   }
 
   /// Returns a JSON-safe snapshot of the phone's location, or null when the

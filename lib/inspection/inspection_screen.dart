@@ -13,10 +13,14 @@ class InspectionScreen extends StatefulWidget {
     required this.source,
     this.jobName,
     this.location,
+    this.cameraMetadata,
+    this.rangefinderDistanceMetres,
   });
   final InspectionImage source;
   final String? jobName;
   final Map<String, Object?>? location;
+  final Map<String, Object?>? cameraMetadata;
+  final double? rangefinderDistanceMetres;
   @override
   State<InspectionScreen> createState() => _InspectionScreenState();
 }
@@ -34,6 +38,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
         selection,
         jobName: widget.jobName,
         location: widget.location,
+        cameraMetadata: widget.cameraMetadata,
+        rangefinderDistanceMetres: widget.rangefinderDistanceMetres,
       );
       if (!mounted) return;
       await Navigator.of(context).push(
