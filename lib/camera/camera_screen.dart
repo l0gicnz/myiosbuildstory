@@ -155,8 +155,15 @@ class _CameraScreenState extends State<CameraScreen>
         return;
       }
       _lastJobName = jobName;
+      final distanceMetres = await _promptRangefinderDistance();
+      if (!mounted) return;
       final location = await _locationSafely();
-      await _openImage(path, jobName: jobName, location: location);
+      await _openImage(
+        path,
+        jobName: jobName,
+        location: location,
+        distanceMetres: distanceMetres,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)

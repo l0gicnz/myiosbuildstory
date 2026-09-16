@@ -79,6 +79,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
   double? get _millimetresPerPixel {
     if (_calibrationPoints.length != 2) return null;
     final pixels = (_calibrationPoints[1] - _calibrationPoints[0]).distance;
+    // CropService copies a square of source pixels without resizing. Therefore
+    // one segmentation-mask pixel corresponds to one upright source pixel.
     return pixels > 0 ? _calibrationDistanceMm / pixels : null;
   }
 
@@ -129,7 +131,9 @@ class _InspectionScreenState extends State<InspectionScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final calibrationScale = _millimetresPerPixel;
+    return Scaffold(
     appBar: AppBar(
       title: Text(
         widget.jobName?.isNotEmpty == true ? widget.jobName! : 'Inspect photo',
@@ -257,6 +261,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
                         ),
                     ],
                   ),
+                if (!_calibrating && calibrationScale != null)
+                  Text(
+                    'Calibration: ${_calibrationDistanceMm.toStringAsFixed(2)} mm over '
+                    '${(_calibrationDistanceMm / calibrationScale).toStringAsFixed(1)} px '
+                    '= ${calibrationScale.toStringAsFixed(4)} mm/px',
+                    textAlign: TextAlign.center,
+                  ),
               ],
             ),
           ),
@@ -264,6 +275,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
       ),
     ),
   );
+  }
 }
 
 String selectionDescription(CropSelection s) =>

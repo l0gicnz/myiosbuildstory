@@ -822,8 +822,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       'Crop preview · tap Calibrate to set a scale from two visible reference points.',
                       textAlign: TextAlign.center,
                     ),
-                    if (widget.location case final location?)
-                      Text('Location: ${_locationLabel(location)}'),
                     if (_rangefinderDescription().isNotEmpty)
                       Text(
                         _rangefinderDescription(),
