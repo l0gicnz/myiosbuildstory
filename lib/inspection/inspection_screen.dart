@@ -28,6 +28,8 @@ class InspectionScreen extends StatefulWidget {
 class _InspectionScreenState extends State<InspectionScreen> {
   CropSelection? _selection;
   bool _busy = false;
+  bool _calibrating = false;
+  final _calibrationPoints = <Offset>[];
   Future<void> _openCrop() async {
     final selection = _selection;
     if (selection == null || _busy) return;
@@ -49,6 +51,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
             selection: selection,
             jobName: widget.jobName,
             location: widget.location,
+            initialMillimetresPerPixel: _millimetresPerPixel,
           ),
         ),
       );
@@ -70,6 +73,47 @@ class _InspectionScreenState extends State<InspectionScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  double? get _millimetresPerPixel {
+    if (_calibrationPoints.length != 2) return null;
+    final pixels = (_calibrationPoints[1] - _calibrationPoints[0]).distance;
+    return pixels > 0 ? _calibrationDistanceMm / pixels : null;
+  }
+
+  double _calibrationDistanceMm = 0;
+
+  Future<void> _finishCalibration() async {
+    if (_calibrationPoints.length != 2) return;
+    final controller = TextEditingController();
+    final value = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Set calibration distance'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Known distance (mm)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final parsed = double.tryParse(controller.text.trim());
+              if (parsed != null && parsed > 0) Navigator.pop(context, parsed);
+            },
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || value == null) return;
+    setState(() {
+      _calibrationDistanceMm = value;
+      _calibrating = false;
+    });
   }
 
   @override
@@ -98,7 +142,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
           Expanded(
             child: InteractiveImage(
               source: widget.source,
-              selection: _selection,
+            selection: _selection,
+              calibrating: _calibrating,
+              calibrationPoints: _calibrationPoints,
+              onCalibrationTap: (point) {
+                if (_calibrationPoints.length >= 2) return;
+                setState(() => _calibrationPoints.add(point));
+              },
               onSelect: (point) {
                 if (_busy) return;
                 setState(
@@ -133,6 +183,37 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       : const Icon(Icons.crop),
                   label: Text(_busy ? 'Extracting...' : 'Open crop'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : (_calibrating
+                          ? (_calibrationPoints.length == 2
+                              ? _finishCalibration
+                              : () => setState(() {
+                                    _calibrating = false;
+                                    _calibrationPoints.clear();
+                                  }))
+                          : () => setState(() {
+                                _calibrating = true;
+                                _calibrationPoints.clear();
+                              })),
+                  icon: const Icon(Icons.straighten),
+                  label: Text(_calibrating
+                      ? (_calibrationPoints.length == 2
+                          ? 'Apply calibration'
+                          : 'Cancel calibration')
+                      : 'Calibrate (2 points)'),
+                ),
+                if (_calibrating)
+                  Text(
+                    _calibrationPoints.isEmpty
+                        ? 'Tap the first reference point on the full-resolution image.'
+                        : _calibrationPoints.length == 1
+                            ? 'Tap the second reference point.'
+                            : 'Two points selected; apply the calibration.',
+                    textAlign: TextAlign.center,
+                  ),
               ],
             ),
           ),

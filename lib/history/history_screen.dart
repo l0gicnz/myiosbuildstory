@@ -161,6 +161,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static Map<String, Object?>? _objectMap(Object? value) =>
       value is Map ? Map<String, Object?>.from(value) : null;
 
+  // Retained for opening legacy records, but intentionally not shown in the list.
+  // ignore: unused_element
   static String _locationLabel(Map<String, Object?> value) {
     final latitude = value['latitude'] as num;
     final longitude = value['longitude'] as num;
@@ -175,6 +177,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   static double? _doubleValue(Object? value) =>
       value is num && value.isFinite ? value.toDouble() : null;
 
+  // ignore: unused_element
   static String _cameraMetadataLabel(Map<String, Object?>? metadata) {
     final fov =
         _doubleValue(metadata?['correctedFovDegrees']) ??
@@ -351,38 +354,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 ),
                                 title: Text(
                                   item.jobName.isEmpty
-                                      ? '${item.createdAt.toLocal()}'
-                                            .split('.')
-                                            .first
+                                      ? 'Unnamed inspection'
                                       : item.jobName,
                                 ),
                                 subtitle: Text(
-                                  [
-                                    if (item.jobName.isNotEmpty)
-                                      item.createdAt
-                                          .toLocal()
-                                          .toString()
-                                          .split('.')
-                                          .first,
-                                    'Pixel (${item.selection.selectedX}, ${item.selection.selectedY})',
-                                    item.accepted
-                                        ? 'Detection accepted'
-                                        : 'Not yet accepted',
-                                    if (item.measurement case final value?)
-                                      'Measured width: $value',
-                                    if (item.location case final value?)
-                                      'Location: ${_locationLabel(value)}',
-                                    if (item.rangefinderDistanceMetres
-                                        case final distance?)
-                                      'Rangefinder distance: '
-                                          '${distance.toStringAsFixed(2)} m',
-                                    _cameraMetadataLabel(item.cameraMetadata),
-                                    if (item.notes.isNotEmpty) item.notes,
-                                  ].join('\n'),
+                                  '${item.createdAt.toLocal().toString().split('.').first}\n'
+                                  '${item.accepted ? 'Accepted' : 'Not accepted'}'
+                                  '${item.measurement == null ? '' : ' · ${item.measurement}'}',
                                 ),
-                                isThreeLine:
-                                    item.notes.isNotEmpty ||
-                                    item.jobName.isNotEmpty,
                                 onTap: () => _open(item),
                                 trailing: IconButton(
                                   tooltip: 'Delete inspection',

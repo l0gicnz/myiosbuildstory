@@ -116,7 +116,7 @@ class _OverlayPainter extends CustomPainter {
       canvas.drawPath(
         path,
         Paint()
-          ..color = color.withValues(alpha: d == selected ? 0.62 : 0.3)
+          ..color = color.withValues(alpha: d == selected ? 0.48 : 0.22)
           ..isAntiAlias = false,
       );
       if (d == selected) {

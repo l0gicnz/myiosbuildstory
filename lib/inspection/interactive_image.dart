@@ -11,10 +11,16 @@ class InteractiveImage extends StatefulWidget {
     required this.source,
     required this.onSelect,
     this.selection,
+    this.calibrating = false,
+    this.calibrationPoints = const [],
+    this.onCalibrationTap,
   });
   final InspectionImage source;
   final CropSelection? selection;
   final ValueChanged<Offset> onSelect;
+  final bool calibrating;
+  final List<Offset> calibrationPoints;
+  final ValueChanged<Offset>? onCalibrationTap;
   @override
   State<InteractiveImage> createState() => _InteractiveImageState();
 }
@@ -46,7 +52,13 @@ class _InteractiveImageState extends State<InteractiveImage> {
                 details.localPosition,
                 _transform,
               );
-              if (point != null) widget.onSelect(point);
+              if (point != null) {
+                if (widget.calibrating && widget.onCalibrationTap != null) {
+                  widget.onCalibrationTap!(point);
+                } else {
+                  widget.onSelect(point);
+                }
+              }
             },
             child: InteractiveViewer(
               transformationController: _transform,
@@ -75,6 +87,7 @@ class _InteractiveImageState extends State<InteractiveImage> {
                               mapper,
                               widget.selection,
                               _transform.value.getMaxScaleOnAxis(),
+                              widget.calibrationPoints,
                             ),
                           ),
                         ),
@@ -101,14 +114,23 @@ class _InteractiveImageState extends State<InteractiveImage> {
 }
 
 class _SelectionPainter extends CustomPainter {
-  _SelectionPainter(this.mapper, this.selection, this.zoom);
+  _SelectionPainter(
+    this.mapper,
+    this.selection,
+    this.zoom,
+    this.calibrationPoints,
+  );
   final ImageCoordinateMapper mapper;
   final CropSelection? selection;
   final double zoom;
+  final List<Offset> calibrationPoints;
   @override
   void paint(Canvas canvas, Size size) {
     final s = selection;
-    if (s == null) return;
+    if (s == null) {
+      _paintCalibrationPoints(canvas);
+      return;
+    }
     final rect = Rect.fromLTWH(
       mapper.sourceToScene(Offset(s.cropX.toDouble(), s.cropY.toDouble())).dx,
       mapper.sourceToScene(Offset(s.cropX.toDouble(), s.cropY.toDouble())).dy,
@@ -146,6 +168,30 @@ class _SelectionPainter extends CustomPainter {
         ..strokeWidth = 2 / zoom,
     );
     canvas.drawCircle(point, 2 / zoom, Paint()..color = Colors.cyanAccent);
+    _paintCalibrationPoints(canvas);
+  }
+
+  void _paintCalibrationPoints(Canvas canvas) {
+    for (var i = 0; i < calibrationPoints.length; i++) {
+      final calibrationPoint = mapper.sourceToScene(calibrationPoints[i]);
+      final color = i == 0 ? Colors.amberAccent : Colors.pinkAccent;
+      canvas.drawCircle(
+        calibrationPoint,
+        10 / zoom,
+        Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4 / zoom,
+      );
+      canvas.drawCircle(
+        calibrationPoint,
+        10 / zoom,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2 / zoom,
+      );
+    }
   }
 
   @override

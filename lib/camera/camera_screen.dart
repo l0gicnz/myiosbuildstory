@@ -90,8 +90,11 @@ class _CameraScreenState extends State<CameraScreen>
     });
     String? path;
     try {
-      final cameraMetadata = await _cameraMetadataSafely(controller);
       path = await _service.capture(controller);
+      // Read metadata after capture while the selected device/format is still
+      // active. This is more reliable on iOS devices where the camera plugin
+      // can finish configuring the AVCapture session during capture.
+      final cameraMetadata = await _cameraMetadataSafely(controller);
       if (!mounted) return;
       final jobName = await _promptJobName(initialValue: _lastJobName);
       if (!mounted || jobName == null) {

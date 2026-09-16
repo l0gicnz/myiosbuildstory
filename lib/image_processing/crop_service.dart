@@ -116,9 +116,23 @@ class CropService {
       width: s.cropWidth,
       height: s.cropHeight,
     );
-    final path =
-        '${source.originalPath}.crop_${DateTime.now().microsecondsSinceEpoch}.png';
+    // One source photo represents one inspection record. Re-cropping it
+    // replaces that record instead of appending another history item.
+    final path = '${source.originalPath}.inspection.png';
     File(path).writeAsBytesSync(img.encodePng(crop), flush: true);
+    for (final suffix in [
+      '.accepted-mask.png',
+      '.accepted.json',
+      '.report.txt',
+      '.report.json',
+      '.report.csv',
+    ]) {
+      try {
+        File('$path$suffix').deleteSync();
+      } on FileSystemException {
+        // Sidecars are optional and may not exist yet.
+      }
+    }
     File('$path.json').writeAsStringSync(
       jsonEncode({
         ...s.toJson(),

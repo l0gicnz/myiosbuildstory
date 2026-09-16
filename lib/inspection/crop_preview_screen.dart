@@ -27,6 +27,7 @@ class CropPreviewScreen extends StatefulWidget {
     this.cameraMetadata,
     this.rangefinderDistanceMetres,
     this.initialNotes = '',
+    this.initialMillimetresPerPixel,
   });
   final String path;
   final CropSelection selection;
@@ -35,6 +36,7 @@ class CropPreviewScreen extends StatefulWidget {
   final Map<String, Object?>? cameraMetadata;
   final double? rangefinderDistanceMetres;
   final String initialNotes;
+  final double? initialMillimetresPerPixel;
   @override
   State<CropPreviewScreen> createState() => _CropPreviewScreenState();
 }
@@ -51,12 +53,20 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   ConductorDetectionResult? _result;
   ConductorDetection? _selectedDetection;
   bool _busy = false, _debug = false, _accepted = false;
-  bool _calibrating = false;
+  final bool _calibrating = false;
   final _calibrationPoints = <Offset>[];
   int _activeCalibrationPoint = 0;
   String? _error;
   double? _millimetresPerPixel;
   String _scaleSource = 'Not calibrated';
+
+  void _calibrationTap(Offset local, Size displayedSize) {}
+
+  void _moveCalibrationPointByDelta(
+    int index,
+    Offset delta,
+    Size displayedSize,
+  ) {}
 
   @override
   void initState() {
@@ -66,6 +76,10 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     if (cameraScale != null) {
       _millimetresPerPixel = cameraScale;
       _scaleSource = 'Camera/FOV estimate';
+    }
+    if (widget.initialMillimetresPerPixel != null) {
+      _millimetresPerPixel = widget.initialMillimetresPerPixel;
+      _scaleSource = 'Two-point calibration';
     }
     AppSettings.instance.addListener(_settingsChanged);
     // Load the native graph while the crop is being reviewed so the first
@@ -347,14 +361,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     }
   }
 
-  void _beginCalibration() {
-    setState(() {
-      _calibrating = true;
-      _calibrationPoints.clear();
-      _activeCalibrationPoint = 0;
-    });
-  }
-
+  /* Calibration is handled by InspectionScreen on the full-resolution image.
   Future<void> _calibrationTap(Offset local, Size displayedSize) async {
     if (!_calibrating ||
         displayedSize.width <= 0 ||
@@ -502,6 +509,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       }
     }
   }
+  */
 
   Future<void> _share() async {
     final result = _result;
@@ -814,24 +822,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       'Crop preview · tap Calibrate to set a scale from two visible reference points.',
                       textAlign: TextAlign.center,
                     ),
-                    TextField(
-                      controller: _notesController,
-                      enabled: !_busy,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: 'Inspection notes (optional)',
-                        hintText: 'Pole, span, conductor, or site details',
-                      ),
-                    ),
-                    if (_accepted)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: _busy ? null : _saveNotes,
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Save notes'),
-                        ),
-                      ),
                     if (widget.location case final location?)
                       Text('Location: ${_locationLabel(location)}'),
                     if (_rangefinderDescription().isNotEmpty)
@@ -859,17 +849,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         ),
                       ),
                     if (_result case final result?) ...[
-                      Text(
-                        'Inference: ${result.inferenceTime.inMilliseconds} ms | Total: ${result.totalTime.inMilliseconds} ms',
-                      ),
                       if (selected != null) ...[
-                        const Text(
-                          'Highlighted mask: detected conductor',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}% | Mask: ${selected.maskArea} pixels',
-                        ),
                         Text(
                           'Segmented width: ${selected.segmentationWidth} px'
                           '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
@@ -910,70 +890,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           },
                         ),
                     ],
-                    if (_calibrating)
-                      Column(
-                        children: [
-                          Text(switch (_calibrationPoints.length) {
-                            0 => 'Calibration: tap the first reference point.',
-                            1 => 'Calibration: tap the second reference point.',
-                            _ => 'Drag the handles or use the arrows to align the points.',
-                          }, textAlign: TextAlign.center),
-                          if (_calibrationPoints.isNotEmpty)
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              crossAxisAlignment: WrapCrossAlignment.center,
-                              children: [
-                                ChoiceChip(
-                                  label: const Text('Point 1'),
-                                  selected: _activeCalibrationPoint == 0,
-                                  onSelected: (_) => setState(
-                                    () => _activeCalibrationPoint = 0,
-                                  ),
-                                ),
-                                if (_calibrationPoints.length > 1)
-                                  ChoiceChip(
-                                    label: const Text('Point 2'),
-                                    selected: _activeCalibrationPoint == 1,
-                                    onSelected: (_) => setState(
-                                      () => _activeCalibrationPoint = 1,
-                                    ),
-                                  ),
-                                IconButton(
-                                  tooltip: 'Move point left 1 pixel',
-                                  onPressed: () => _nudgeCalibrationPoint(
-                                    const Offset(-1, 0),
-                                  ),
-                                  icon: const Icon(Icons.chevron_left),
-                                ),
-                                IconButton(
-                                  tooltip: 'Move point up 1 pixel',
-                                  onPressed: () => _nudgeCalibrationPoint(
-                                    const Offset(0, -1),
-                                  ),
-                                  icon: const Icon(Icons.expand_less),
-                                ),
-                                IconButton(
-                                  tooltip: 'Move point down 1 pixel',
-                                  onPressed: () => _nudgeCalibrationPoint(
-                                    const Offset(0, 1),
-                                  ),
-                                  icon: const Icon(Icons.expand_more),
-                                ),
-                                IconButton(
-                                  tooltip: 'Move point right 1 pixel',
-                                  onPressed: () => _nudgeCalibrationPoint(
-                                    const Offset(1, 0),
-                                  ),
-                                  icon: const Icon(Icons.chevron_right),
-                                ),
-                                if (_calibrationPoints.length == 2)
-                                  Text(
-                                    '${(_calibrationPoints[1] - _calibrationPoints[0]).distance.toStringAsFixed(1)} px',
-                                  ),
-                              ],
-                            ),
-                        ],
-                      ),
                     if (_accepted)
                       const Text('Detection accepted and saved for this crop.'),
                     const SizedBox(height: 8),
@@ -997,28 +913,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           child: const Text('Accept Detection'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: _busy
-                              ? null
-                              : (_calibrating
-                                    ? _calibrationPoints.length == 2
-                                          ? _finishCalibration
-                                          : () => setState(() {
-                                              _calibrating = false;
-                                              _calibrationPoints.clear();
-                                            })
-                                    : _beginCalibration),
-                          icon: const Icon(Icons.straighten),
-                          label: Text(
-                            _calibrating
-                                ? _calibrationPoints.length == 2
-                                      ? 'Apply calibration'
-                                      : 'Cancel calibration'
-                                : _millimetresPerPixel == null
-                                ? 'Calibrate (2 points)'
-                                : 'Recalibrate (2 points)',
-                          ),
-                        ),
-                        OutlinedButton.icon(
                           onPressed: _busy ? null : _share,
                           icon: const Icon(Icons.ios_share),
                           label: const Text('Share'),
@@ -1031,6 +925,24 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         ),
                       ],
                     ),
+                    TextField(
+                      controller: _notesController,
+                      enabled: !_busy,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Inspection notes (optional)',
+                        hintText: 'Pole, span, conductor, or site details',
+                      ),
+                    ),
+                    if (_accepted)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: _busy ? null : _saveNotes,
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text('Save notes'),
+                        ),
+                      ),
                     if (kDebugMode) ...[
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
