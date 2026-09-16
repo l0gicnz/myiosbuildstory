@@ -287,7 +287,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     if (selected == null) return;
     final widthMm = _millimetresPerPixel == null
         ? null
-        : selected.segmentationWidth * _millimetresPerPixel!;
+        : selected.segmentationThicknessPixels * _millimetresPerPixel!;
     final isInches = AppSettings.instance.unit == MeasurementUnit.inches;
     setState(() {
       _busy = true;
@@ -310,7 +310,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         ...?widget.location == null ? null : {'location': widget.location!},
         if (_millimetresPerPixel case final ratio?) ...{
           'millimetresPerPixel': ratio,
-          'segmentationWidthMm': selected.segmentationWidth * ratio,
+          'segmentationWidthMm': selected.segmentationThicknessPixels * ratio,
           if (widthMm case final mm?)
             'displayedWidth': isInches ? mm / 25.4 : mm,
         },
@@ -482,7 +482,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       final unit = AppSettings.instance.unit;
       final widthMm = selected == null
           ? null
-          : selected.segmentationWidth * ratio;
+          : selected.segmentationThicknessPixels * ratio;
       decoded['millimetresPerPixel'] = ratio;
       if (widthMm != null) {
         decoded['segmentationWidthMm'] = widthMm;
@@ -516,7 +516,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final selected = _selectedDetection ?? result?.selectedDetection;
     final widthMm = selected == null || _millimetresPerPixel == null
         ? null
-        : selected.segmentationWidth * _millimetresPerPixel!;
+        : selected.segmentationThicknessPixels * _millimetresPerPixel!;
     final inInches = AppSettings.instance.unit == MeasurementUnit.inches;
     final displayedWidth = widthMm == null
         ? null
@@ -533,7 +533,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         'Location: ${_locationLabel(location)}',
       'Crop: ${widget.selection.cropWidth} x ${widget.selection.cropHeight} px',
       if (selected != null) ...[
-        'Segmented width: ${selected.segmentationWidth} px',
+        'Conductor thickness: ${selected.segmentationThicknessPixels.toStringAsFixed(1)} px',
         'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}%',
         if (displayedWidth case final display?)
           'Estimated width: ${display.toStringAsFixed(inInches ? 2 : 1)} ${inInches ? 'in' : 'mm'}',
@@ -550,7 +550,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       ...?widget.location == null ? null : {'location': widget.location},
       if (selected != null) ...{
         'confidence': selected.confidence,
-        'segmentationWidthPx': selected.segmentationWidth,
+        'segmentationWidthPx': selected.segmentationThicknessPixels,
         'maskAreaPx': selected.maskArea,
         'boundingBoxXYXY': [
           selected.boundingBox.left,
@@ -569,7 +569,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     await File(jsonPath).writeAsString(jsonEncode(report), flush: true);
     await File(csvPath).writeAsString(
       '''jobName,createdAt,segmentationWidthPx,widthMm,confidence,maskAreaPx
-"${_csv(widget.jobName ?? '')}","${report['createdAt']}",${selected?.segmentationWidth ?? ''},${widthMm ?? ''},${selected?.confidence ?? ''},${selected?.maskArea ?? ''}
+"${_csv(widget.jobName ?? '')}","${report['createdAt']}",${selected?.segmentationThicknessPixels ?? ''},${widthMm ?? ''},${selected?.confidence ?? ''},${selected?.maskArea ?? ''}
 ''',
       flush: true,
     );
@@ -583,10 +583,10 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
         'Job: ${widget.jobName!.trim()}',
       'Crop: ${widget.selection.cropWidth} × ${widget.selection.cropHeight} px',
       if (selected != null) ...[
-        'Segmented width: ${selected.segmentationWidth} px',
+        'Conductor thickness: ${selected.segmentationThicknessPixels.toStringAsFixed(1)} px',
         'Confidence: ${(selected.confidence * 100).toStringAsFixed(1)}%',
         if (_millimetresPerPixel case final ratio?)
-          'Estimated width: ${(selected.segmentationWidth * ratio).toStringAsFixed(1)} mm',
+          'Estimated width: ${(selected.segmentationThicknessPixels * ratio).toStringAsFixed(1)} mm',
       ],
       if (_notesController.text.trim().isNotEmpty)
         'Notes: ${_notesController.text.trim()}',
@@ -631,7 +631,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final selected = _selectedDetection ?? _result?.selectedDetection;
     final widthMm = selected == null || _millimetresPerPixel == null
         ? null
-        : selected.segmentationWidth * _millimetresPerPixel!;
+        : selected.segmentationThicknessPixels * _millimetresPerPixel!;
     final inInches = AppSettings.instance.unit == MeasurementUnit.inches;
     final displayedWidth = widthMm == null
         ? null
@@ -849,7 +849,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                     if (_result case final result?) ...[
                       if (selected != null) ...[
                         Text(
-                          'Segmented width: ${selected.segmentationWidth} px'
+                          'Conductor thickness: ${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'
                           '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
                         ),
                         if (_millimetresPerPixel != null)

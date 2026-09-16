@@ -52,6 +52,8 @@ class _InspectionScreenState extends State<InspectionScreen> {
             selection: selection,
             jobName: widget.jobName,
             location: widget.location,
+            cameraMetadata: widget.cameraMetadata,
+            rangefinderDistanceMetres: widget.rangefinderDistanceMetres,
             initialMillimetresPerPixel: _millimetresPerPixel,
           ),
         ),

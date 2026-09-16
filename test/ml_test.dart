@@ -34,9 +34,24 @@ ConductorDetection detection(
 }
 
 void main() {
-  test('segmentation width measures the mask horizontal pixel span', () {
-    final d = detection(0, 0.9, [(5, 10), (11, 10), (8, 11)]);
-    expect(d.segmentationWidth, 7);
+  test('conductor thickness is measured perpendicular to its long axis', () {
+    final horizontal = <(int, int)>[
+      for (var y = 100; y < 108; y++)
+        for (var x = 50; x < 450; x++) (x, y),
+    ];
+    final vertical = <(int, int)>[
+      for (var x = 100; x < 108; x++)
+        for (var y = 50; y < 450; y++) (x, y),
+    ];
+    final diagonal = <(int, int)>[];
+    for (var y = 40; y < 470; y++) {
+      for (var x = 40; x < 470; x++) {
+        if ((y - x).abs() <= 4) diagonal.add((x, y));
+      }
+    }
+    expect(detection(0, 0.9, horizontal).segmentationThicknessPixels, closeTo(8, 0.1));
+    expect(detection(0, 0.9, vertical).segmentationThicknessPixels, closeTo(8, 0.1));
+    expect(detection(0, 0.9, diagonal).segmentationThicknessPixels, closeTo(6.66, 0.1));
   });
 
   test('containing mask wins over higher confidence nearby mask', () {

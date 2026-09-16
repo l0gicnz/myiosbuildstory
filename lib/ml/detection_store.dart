@@ -34,7 +34,7 @@ class DetectionStore {
         'classId': selected.classId,
         'detectionIndex': selected.index,
         'maskArea': selected.maskArea,
-        'segmentationWidthPx': selected.segmentationWidth,
+        'segmentationWidthPx': selected.segmentationThicknessPixels,
         'selectedCropX': result.selectedPoint.dx,
         'selectedCropY': result.selectedPoint.dy,
         'boxXYXY': [
