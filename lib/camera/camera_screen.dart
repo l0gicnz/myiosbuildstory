@@ -578,53 +578,24 @@ class _CameraScreenState extends State<CameraScreen>
                     ),
             ),
           ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Row(
               children: [
-                Text(
-                  'Ready to inspect',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _controller == null || _busy ? null : _capture,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Take photo'),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Frame the conductor or choose an existing photo.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy ? null : _pickExisting,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Open image'),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: FilledButton.icon(
-                        onPressed: _controller == null || _busy ? null : _capture,
-                        icon: const Icon(Icons.camera_alt_outlined),
-                        label: const Text('Take photo'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : _pickExisting,
-                        icon: const Icon(Icons.photo_library_outlined),
-                        label: const Text('Open image'),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
