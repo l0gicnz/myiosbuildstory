@@ -32,9 +32,16 @@ class CropSelection {
 }
 
 class InspectionImage {
-  const InspectionImage(this.originalPath, this.path, this.width, this.height);
+  const InspectionImage(
+    this.originalPath,
+    this.path,
+    this.width,
+    this.height, {
+    this.cameraMetadata,
+  });
   final String originalPath, path;
   final int width, height;
+  final Map<String, Object?>? cameraMetadata;
 }
 
 class CropService {
@@ -69,10 +76,60 @@ class CropService {
     if (decoded == null) {
       throw const FormatException('Cannot decode photograph.');
     }
+    final cameraMetadata = _cameraMetadataFromExif(decoded);
     final upright = img.bakeOrientation(decoded);
     final path = '$originalPath.upright.png';
     File(path).writeAsBytesSync(img.encodePng(upright), flush: true);
-    return InspectionImage(originalPath, path, upright.width, upright.height);
+    return InspectionImage(
+      originalPath,
+      path,
+      upright.width,
+      upright.height,
+      cameraMetadata: cameraMetadata,
+    );
+  }
+
+  static Map<String, Object?>? _cameraMetadataFromExif(img.Image image) {
+    try {
+      final exif = image.exif;
+      final make = exif.imageIfd.make?.trim();
+      final model = exif.imageIfd.model?.trim();
+      final cameraModel = [make, model]
+          .whereType<String>()
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .join(' ');
+      final focal35Value = exif.exifIfd[0xA405];
+      // EXIF FocalLengthIn35mmFilm is an integer SHORT tag on iPhone images.
+      final focal35 = focal35Value?.toInt().toDouble();
+      final orientation = image.exif.imageIfd.orientation ?? 1;
+      final swapsAxes = orientation >= 5 && orientation <= 8;
+      final uprightWidth = swapsAxes ? image.height : image.width;
+      final uprightHeight = swapsAxes ? image.width : image.height;
+      final aspect = uprightWidth / uprightHeight;
+      final sensorWidthEquivalent =
+          43.2666 * aspect / math.sqrt(aspect * aspect + 1);
+      final fov = focal35 != null && focal35 > 0
+          ? 2 * math.atan(sensorWidthEquivalent / (2 * focal35)) * 180 / math.pi
+          : null;
+      if (cameraModel.isEmpty && fov == null) return null;
+      return {
+        if (cameraModel.isNotEmpty) 'cameraModel': cameraModel,
+        if (fov != null && fov.isFinite) ...{
+          'baseFovDegrees': fov,
+          'correctedFovDegrees': fov,
+        },
+        if (focal35 != null && focal35 > 0)
+          'focalLength35mm': focal35,
+        'zoomFactor': 1.0,
+        'metadataSource': 'EXIF',
+        'formatWidth': uprightWidth,
+        'formatHeight': uprightHeight,
+      };
+    } catch (_) {
+      // EXIF is optional and often stripped by image-sharing services.
+      return null;
+    }
   }
 
   static Future<String> extract(

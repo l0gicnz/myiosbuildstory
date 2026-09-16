@@ -41,9 +41,14 @@ class _InspectionScreenState extends State<InspectionScreen> {
         selection,
         jobName: widget.jobName,
         location: widget.location,
-        cameraMetadata: widget.cameraMetadata,
+        cameraMetadata: widget.cameraMetadata ?? widget.source.cameraMetadata,
         rangefinderDistanceMetres: widget.rangefinderDistanceMetres,
       );
+      if (!mounted) return;
+      // The stable record path is deliberately overwritten for every crop.
+      // Evict its old decoded image or Image.file may keep showing the
+      // previous crop from Flutter's global image cache.
+      await FileImage(File(path)).evict();
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
@@ -52,7 +57,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
             selection: selection,
             jobName: widget.jobName,
             location: widget.location,
-            cameraMetadata: widget.cameraMetadata,
+            cameraMetadata: widget.cameraMetadata ?? widget.source.cameraMetadata,
             rangefinderDistanceMetres: widget.rangefinderDistanceMetres,
             initialMillimetresPerPixel: _millimetresPerPixel,
           ),

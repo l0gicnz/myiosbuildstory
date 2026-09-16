@@ -70,10 +70,17 @@ void main() {
         p.setRgb(p.x % 256, p.y % 256, (p.x + p.y) % 256);
       }
       original.exif.imageIfd.orientation = 6;
+      original.exif.imageIfd.make = 'Apple';
+      original.exif.imageIfd.model = 'iPhone 11';
+      final focalLength35mm = img.IfdValueShort(0)..setInt(26);
+      original.exif.exifIfd[0xA405] = focalLength35mm;
       final bytes = img.encodeJpg(original, quality: 95);
       final file = File('${dir.path}/original.jpg')..writeAsBytesSync(bytes);
       final source = await CropService.prepare(file.path);
       expect((source.width, source.height), (800, 600));
+      expect(source.cameraMetadata?['cameraModel'], 'Apple iPhone 11');
+      expect(source.cameraMetadata?['metadataSource'], 'EXIF');
+      expect(source.cameraMetadata?['baseFovDegrees'], isA<double>());
       expect(file.readAsBytesSync(), bytes);
       final expected = img.bakeOrientation(img.decodeJpg(bytes)!);
       final s = CropService.calculate(
