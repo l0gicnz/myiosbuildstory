@@ -30,6 +30,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
   bool _busy = false;
   bool _calibrating = false;
   final _calibrationPoints = <Offset>[];
+  int _activeCalibrationPoint = 0;
   Future<void> _openCrop() async {
     final selection = _selection;
     if (selection == null || _busy) return;
@@ -116,6 +117,17 @@ class _InspectionScreenState extends State<InspectionScreen> {
     });
   }
 
+  void _nudgeCalibrationPoint(Offset delta) {
+    if (_calibrationPoints.isEmpty) return;
+    final point = _calibrationPoints[_activeCalibrationPoint];
+    setState(() {
+      _calibrationPoints[_activeCalibrationPoint] = Offset(
+        (point.dx + delta.dx).clamp(0, widget.source.width - 1).toDouble(),
+        (point.dy + delta.dy).clamp(0, widget.source.height - 1).toDouble(),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -147,7 +159,10 @@ class _InspectionScreenState extends State<InspectionScreen> {
               calibrationPoints: _calibrationPoints,
               onCalibrationTap: (point) {
                 if (_calibrationPoints.length >= 2) return;
-                setState(() => _calibrationPoints.add(point));
+                setState(() {
+                  _calibrationPoints.add(point);
+                  _activeCalibrationPoint = _calibrationPoints.length - 1;
+                });
               },
               onSelect: (point) {
                 if (_busy) return;
@@ -206,13 +221,41 @@ class _InspectionScreenState extends State<InspectionScreen> {
                       : 'Calibrate (2 points)'),
                 ),
                 if (_calibrating)
-                  Text(
-                    _calibrationPoints.isEmpty
-                        ? 'Tap the first reference point on the full-resolution image.'
-                        : _calibrationPoints.length == 1
-                            ? 'Tap the second reference point.'
-                            : 'Two points selected; apply the calibration.',
-                    textAlign: TextAlign.center,
+                  Column(
+                    children: [
+                      Text(
+                        _calibrationPoints.isEmpty
+                            ? 'Tap the first reference point on the full-resolution image.'
+                            : _calibrationPoints.length == 1
+                                ? 'Tap the second reference point.'
+                                : 'Select a point and fine-tune it one pixel at a time.',
+                        textAlign: TextAlign.center,
+                      ),
+                      if (_calibrationPoints.isNotEmpty)
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('Point 1'),
+                              selected: _activeCalibrationPoint == 0,
+                              onSelected: (_) => setState(() => _activeCalibrationPoint = 0),
+                            ),
+                            if (_calibrationPoints.length > 1)
+                              ChoiceChip(
+                                label: const Text('Point 2'),
+                                selected: _activeCalibrationPoint == 1,
+                                onSelected: (_) => setState(() => _activeCalibrationPoint = 1),
+                              ),
+                            IconButton(onPressed: () => _nudgeCalibrationPoint(const Offset(-1, 0)), icon: const Icon(Icons.chevron_left)),
+                            IconButton(onPressed: () => _nudgeCalibrationPoint(const Offset(0, -1)), icon: const Icon(Icons.expand_less)),
+                            IconButton(onPressed: () => _nudgeCalibrationPoint(const Offset(0, 1)), icon: const Icon(Icons.expand_more)),
+                            IconButton(onPressed: () => _nudgeCalibrationPoint(const Offset(1, 0)), icon: const Icon(Icons.chevron_right)),
+                            if (_calibrationPoints.length == 2)
+                              Text('${(_calibrationPoints[1] - _calibrationPoints[0]).distance.toStringAsFixed(1)} px'),
+                          ],
+                        ),
+                    ],
                   ),
               ],
             ),

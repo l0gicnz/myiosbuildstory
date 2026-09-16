@@ -172,12 +172,52 @@ class _SelectionPainter extends CustomPainter {
   }
 
   void _paintCalibrationPoints(Canvas canvas) {
+    if (calibrationPoints.length == 2) {
+      final first = mapper.sourceToScene(calibrationPoints[0]);
+      final second = mapper.sourceToScene(calibrationPoints[1]);
+      canvas.drawLine(
+        first,
+        second,
+        Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2 / zoom,
+      );
+    }
     for (var i = 0; i < calibrationPoints.length; i++) {
       final calibrationPoint = mapper.sourceToScene(calibrationPoints[i]);
       final color = i == 0 ? Colors.amberAccent : Colors.pinkAccent;
+      final shadow = Paint()
+        ..color = Colors.black
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4 / zoom;
+      final line = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 / zoom;
+      canvas.drawLine(
+        calibrationPoint - Offset(12 / zoom, 0),
+        calibrationPoint + Offset(12 / zoom, 0),
+        shadow,
+      );
+      canvas.drawLine(
+        calibrationPoint - Offset(0, 12 / zoom),
+        calibrationPoint + Offset(0, 12 / zoom),
+        shadow,
+      );
+      canvas.drawLine(
+        calibrationPoint - Offset(12 / zoom, 0),
+        calibrationPoint + Offset(12 / zoom, 0),
+        line,
+      );
+      canvas.drawLine(
+        calibrationPoint - Offset(0, 12 / zoom),
+        calibrationPoint + Offset(0, 12 / zoom),
+        line,
+      );
       canvas.drawCircle(
         calibrationPoint,
-        10 / zoom,
+        4 / zoom,
         Paint()
           ..color = Colors.black
           ..style = PaintingStyle.stroke
@@ -185,11 +225,8 @@ class _SelectionPainter extends CustomPainter {
       );
       canvas.drawCircle(
         calibrationPoint,
-        10 / zoom,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2 / zoom,
+        4 / zoom,
+        line,
       );
     }
   }
