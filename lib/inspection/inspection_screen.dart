@@ -188,9 +188,13 @@ class _InspectionScreenState extends State<InspectionScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.4,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(12),
+              child: Column(
               children: [
                 if (_selection case final s?)
                   Text(selectionDescription(s), textAlign: TextAlign.center),
@@ -276,6 +280,7 @@ class _InspectionScreenState extends State<InspectionScreen> {
                     textAlign: TextAlign.center,
                   ),
               ],
+              ),
             ),
           ),
         ],
