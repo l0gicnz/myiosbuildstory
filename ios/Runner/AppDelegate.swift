@@ -14,9 +14,10 @@ import AVFoundation
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
+    let binaryMessenger = engineBridge.applicationRegistrar.messenger()
     let cameraMetadataChannel = FlutterMethodChannel(
       name: "powerline_measure/camera_metadata",
-      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+      binaryMessenger: binaryMessenger
     )
     cameraMetadataChannel.setMethodCallHandler { call, result in
       guard call.method == "getCameraMetadata" else {
@@ -58,12 +59,13 @@ import AVFoundation
       let usableBaseFov = baseFov > 0 ? baseFov : 0.0
       let usableCorrectedFov = correctedFov > 0 ? correctedFov : usableBaseFov
       let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-      let formatAspect = Double(max(dimensions.width, dimensions.height)) /
-        Double(min(dimensions.width, dimensions.height))
+      let longSide = Double(max(dimensions.width, dimensions.height))
+      let shortSide = Double(min(dimensions.width, dimensions.height))
+      let formatAspect = shortSide > 0 ? longSide / shortSide : 1.0
       let portraitFov = usableCorrectedFov > 0
         ? 2.0 * atan(
-            tan((usableCorrectedFov * .pi / 180.0) / 2.0) / formatAspect
-          ) * 180.0 / .pi
+            tan((usableCorrectedFov * Double.pi / 180.0) / 2.0) / formatAspect
+          ) * 180.0 / Double.pi
         : 0.0
       result([
         "cameraName": device.uniqueID,

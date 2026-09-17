@@ -517,9 +517,9 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Powerline Measure'),
+      title: const SizedBox.shrink(),
       actions: [
-        IconButton(
+        IconButton.filledTonal(
           tooltip: 'Inspection history',
           onPressed: _busy
               ? null
@@ -530,7 +530,7 @@ class _CameraScreenState extends State<CameraScreen>
                 ),
           icon: const Icon(Icons.history),
         ),
-        IconButton(
+        IconButton.filledTonal(
           tooltip: 'Settings',
           onPressed: _busy
               ? null
@@ -581,25 +581,55 @@ class _CameraScreenState extends State<CameraScreen>
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: SizedBox(
+            height: 132,
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _controller == null || _busy ? null : _capture,
-                    icon: const Icon(Icons.camera_alt),
-                    label: const Text('Take photo'),
+                IconButton.filledTonal(
+                  iconSize: 32,
+                  padding: const EdgeInsets.all(20),
+                  onPressed: _busy ? null : _pickExisting,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  tooltip: 'Open image',
+                ),
+                GestureDetector(
+                  onTap: _controller == null || _busy ? null : _capture,
+                  child: Container(
+                    width: 96,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.primary,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        width: 6,
+                      ),
+                    ),
+                    child: _busy
+                        ? const Padding(
+                            padding: EdgeInsets.all(28),
+                            child: CircularProgressIndicator(),
+                          )
+                        : const Icon(Icons.camera_alt_outlined, size: 34),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _busy ? null : _pickExisting,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Open image'),
-                  ),
+                IconButton.filledTonal(
+                  iconSize: 32,
+                  padding: const EdgeInsets.all(20),
+                  onPressed: _busy
+                      ? null
+                      : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const HistoryScreen(),
+                            ),
+                          ),
+                  icon: const Icon(Icons.history),
+                  tooltip: 'History',
                 ),
               ],
             ),
+          ),
           ),
         ],
       ),

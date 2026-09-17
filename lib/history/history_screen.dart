@@ -291,7 +291,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Inspection history'),
+      title: const Text('History'),
       actions: [
         IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         PopupMenuButton<String>(
@@ -337,7 +337,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     : RefreshIndicator(
                         onRefresh: _load,
                         child: ListView.builder(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
                           itemCount: _filtered.length,
                           itemBuilder: (context, index) {
                             final item = _filtered[index];
