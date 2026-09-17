@@ -333,6 +333,7 @@ class _CameraScreenState extends State<CameraScreen>
         '$cropPath.report.txt',
         '$cropPath.report.json',
         '$cropPath.report.csv',
+        '$cropPath.report.zip',
       ]);
     }
     for (final key in ['originalPath', 'uprightPath']) {

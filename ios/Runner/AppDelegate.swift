@@ -55,14 +55,22 @@ import AVFoundation
       let correctedFov = format.geometricDistortionCorrectedVideoFieldOfView
       // Some newer formats report zero for the corrected value. The base FOV
       // remains usable for scale estimation in that case.
-      let usableBaseFov = baseFov > 0 ? baseFov : 60.0
+      let usableBaseFov = baseFov > 0 ? baseFov : 0.0
       let usableCorrectedFov = correctedFov > 0 ? correctedFov : usableBaseFov
       let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+      let formatAspect = Double(max(dimensions.width, dimensions.height)) /
+        Double(min(dimensions.width, dimensions.height))
+      let portraitFov = usableCorrectedFov > 0
+        ? 2.0 * atan(
+            tan((usableCorrectedFov * .pi / 180.0) / 2.0) / formatAspect
+          ) * 180.0 / .pi
+        : 0.0
       result([
         "cameraName": device.uniqueID,
         "cameraModel": device.localizedName,
         "baseFovDegrees": usableBaseFov,
         "correctedFovDegrees": usableCorrectedFov,
+        "portraitFovDegrees": portraitFov,
         "zoomFactor": device.videoZoomFactor,
         "formatWidth": dimensions.width,
         "formatHeight": dimensions.height,

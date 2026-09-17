@@ -183,6 +183,7 @@ class CropService {
       '.report.txt',
       '.report.json',
       '.report.csv',
+      '.report.zip',
     ]) {
       try {
         File('$path$suffix').deleteSync();

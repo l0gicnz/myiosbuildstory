@@ -196,8 +196,6 @@ class _InspectionScreenState extends State<InspectionScreen> {
               padding: const EdgeInsets.all(12),
               child: Column(
               children: [
-                if (_selection case final s?)
-                  Text(selectionDescription(s), textAlign: TextAlign.center),
                 if (widget.source.width < 512 || widget.source.height < 512)
                   const Text(
                     'Source is smaller than 512 pixels; crop uses available pixels.',

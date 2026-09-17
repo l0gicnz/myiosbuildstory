@@ -41,6 +41,7 @@ dependencies:
   flutter_onnxruntime: ^1.8.5
   share_plus: ^13.3.0
   geolocator: ^14.0.3
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:

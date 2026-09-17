@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 import 'package:share_plus/share_plus.dart';
 
@@ -59,6 +60,8 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   String? _error;
   double? _millimetresPerPixel;
   String _scaleSource = 'Not calibrated';
+  late bool _usePortraitFov =
+      widget.selection.sourceHeight > widget.selection.sourceWidth;
 
   void _calibrationTap(Offset local, Size displayedSize) {}
 
@@ -180,12 +183,13 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   double? _cameraScale() {
     final distance = widget.rangefinderDistanceMetres;
     final metadata = widget.cameraMetadata;
-    if (distance == null || distance <= 0 || metadata == null) return null;
-    final fov =
-        _doubleValue(metadata['correctedFovDegrees']) ??
-        _doubleValue(metadata['baseFovDegrees']);
+    if (distance == null || distance <= 0 ||
+        (metadata == null && !_usePortraitFov)) {
+      return null;
+    }
+    final fov = _effectiveFov(metadata);
     if (fov == null || fov <= 0 || fov >= 180) return null;
-    final zoom = _doubleValue(metadata['zoomFactor']) ?? 1;
+    final zoom = _doubleValue(metadata?['zoomFactor']) ?? 1;
     if (zoom <= 0) return null;
     final halfFov = fov * math.pi / 360;
     final effectiveHalfFov = math.atan(math.tan(halfFov) / zoom);
@@ -195,9 +199,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
 
   String _cameraScaleDescription() {
     final distance = widget.rangefinderDistanceMetres;
-    final fov =
-        _doubleValue(widget.cameraMetadata?['correctedFovDegrees']) ??
-        _doubleValue(widget.cameraMetadata?['baseFovDegrees']);
+    final fov = _effectiveFov(widget.cameraMetadata);
     if (distance == null || fov == null) return '';
     return '${distance.toStringAsFixed(2)} m rangefinder · '
         '${fov.toStringAsFixed(1)}° FOV';
@@ -208,9 +210,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     if (distance == null || distance <= 0) return '';
     final metadata = widget.cameraMetadata;
     final cameraModel = metadata?['cameraModel'] as String?;
-    final fov =
-        _doubleValue(metadata?['correctedFovDegrees']) ??
-        _doubleValue(metadata?['baseFovDegrees']);
+    final fov = _effectiveFov(metadata);
     final camera = switch ((cameraModel, fov)) {
       (final model?, final degrees?) =>
         ' - $model, ${degrees.toStringAsFixed(1)} deg FOV',
@@ -223,9 +223,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   String _cameraScaleAvailabilityMessage() {
     final distance = widget.rangefinderDistanceMetres;
     final metadata = widget.cameraMetadata;
-    final fov =
-        _doubleValue(metadata?['correctedFovDegrees']) ??
-        _doubleValue(metadata?['baseFovDegrees']);
+    final fov = _effectiveFov(metadata);
     if (metadata != null && fov != null && fov > 0 && fov < 180) return '';
     if (distance != null && distance > 0) {
       return 'Camera model/FOV data unavailable. The rangefinder distance was '
@@ -238,15 +236,23 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
 
   String _cameraMetadataStatus() {
     final metadata = widget.cameraMetadata;
-    final fov =
-        _doubleValue(metadata?['correctedFovDegrees']) ??
-        _doubleValue(metadata?['baseFovDegrees']);
-    if (metadata == null || fov == null || fov <= 0 || fov >= 180) {
+    final fov = _effectiveFov(metadata);
+    if (fov == null || fov <= 0 || fov >= 180) {
       return 'Camera metadata: unavailable';
     }
-    final model = metadata['cameraModel'] as String?;
+    final model = metadata?['cameraModel'] as String?;
     return 'Camera metadata: ${model ?? 'iPhone'} · '
         '${fov.toStringAsFixed(1)}° FOV';
+  }
+
+  double? _effectiveFov(Map<String, Object?>? metadata) {
+    if (_usePortraitFov) {
+      return _doubleValue(metadata?['portraitFovDegrees']) ??
+          _doubleValue(metadata?['correctedFovDegrees']) ??
+          _doubleValue(metadata?['baseFovDegrees']);
+    }
+    return _doubleValue(metadata?['correctedFovDegrees']) ??
+        _doubleValue(metadata?['baseFovDegrees']);
   }
 
   void _settingsChanged() {
@@ -300,6 +306,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
           'jobName': widget.jobName!.trim(),
         'notes': _notesController.text.trim(),
         'measurementUnit': AppSettings.instance.unit.name,
+        if (_effectiveFov(widget.cameraMetadata) case final fov?)
+          'fovDegrees': fov,
+        'portraitFovOverride': _usePortraitFov,
         'scaleSource': _scaleSource,
         if (widget.rangefinderDistanceMetres case final distance?
             when distance > 0)
@@ -547,6 +556,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       'selection': widget.selection.toJson(),
       'notes': _notesController.text.trim(),
       'measurementUnit': AppSettings.instance.unit.name,
+      if (_effectiveFov(widget.cameraMetadata) case final fov?)
+        'fovDegrees': fov,
+      'portraitFovOverride': _usePortraitFov,
       ...?widget.location == null ? null : {'location': widget.location},
       if (selected != null) ...{
         'confidence': selected.confidence,
@@ -568,8 +580,8 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final textPath = '$reportBase.txt';
     await File(jsonPath).writeAsString(jsonEncode(report), flush: true);
     await File(csvPath).writeAsString(
-      '''jobName,createdAt,segmentationWidthPx,widthMm,confidence,maskAreaPx
-"${_csv(widget.jobName ?? '')}","${report['createdAt']}",${selected?.segmentationThicknessPixels ?? ''},${widthMm ?? ''},${selected?.confidence ?? ''},${selected?.maskArea ?? ''}
+      '''jobName,createdAt,segmentationWidthPx,widthMm,confidence,maskAreaPx,fovDegrees,portraitFovOverride
+"${_csv(widget.jobName ?? '')}","${report['createdAt']}",${selected?.segmentationThicknessPixels ?? ''},${widthMm ?? ''},${selected?.confidence ?? ''},${selected?.maskArea ?? ''},${report['fovDegrees'] ?? ''},${report['portraitFovOverride'] ?? false}
 ''',
       flush: true,
     );
@@ -578,6 +590,38 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       flush: true,
     );
     files.addAll([XFile(textPath), XFile(jsonPath), XFile(csvPath)]);
+    final zipPath = '${widget.path}.report.zip';
+    final zipArchive = Archive();
+    final exportPaths = <String>{
+      widget.path,
+      maskPath,
+      textPath,
+      jsonPath,
+      csvPath,
+    };
+    final cropMetadata = File('${widget.path}.json');
+    if (await cropMetadata.exists()) {
+      try {
+        final decoded = jsonDecode(await cropMetadata.readAsString());
+        if (decoded is Map<String, dynamic> &&
+            decoded['originalPath'] is String) {
+          exportPaths.add(decoded['originalPath'] as String);
+        }
+      } catch (_) {
+        // The crop can still be exported when its optional metadata is absent.
+      }
+    }
+    for (final path in exportPaths) {
+      final file = File(path);
+      if (!await file.exists()) continue;
+      final bytes = await file.readAsBytes();
+      zipArchive.addFile(ArchiveFile(_exportName(path), bytes.length, bytes));
+    }
+    await File(zipPath).writeAsBytes(
+      ZipEncoder().encode(zipArchive),
+      flush: true,
+    );
+    files.add(XFile(zipPath));
     final legacyLines = <String>[
       if (widget.jobName?.trim().isNotEmpty == true)
         'Job: ${widget.jobName!.trim()}',
@@ -613,6 +657,34 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
   }
 
   static String _csv(String value) => value.replaceAll('"', '""');
+
+  String _exportName(String path) {
+    if (path == widget.path) return 'inspection.png';
+    return path.split(RegExp(r'[\\/]')).last;
+  }
+
+  Widget _dataTable(List<(String, String)> rows) => Table(
+    columnWidths: const {0: FlexColumnWidth(1), 1: FlexColumnWidth(1)},
+    border: TableBorder.all(
+      color: Colors.grey,
+      borderRadius: BorderRadius.all(Radius.circular(4)),
+    ),
+    children: [
+      for (final (label, value) in rows)
+        TableRow(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              child: Text(value),
+            ),
+          ],
+        ),
+    ],
+  );
 
   @override
   void dispose() {
@@ -818,9 +890,23 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
-                    const Text(
-                      'Crop preview · tap Calibrate to set a scale from two visible reference points.',
-                      textAlign: TextAlign.center,
+                    const SizedBox.shrink(),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      value: _usePortraitFov,
+                      title: const Text('Use portrait-axis camera FOV'),
+                      subtitle: const Text(
+                        'Use this for photos taken in portrait orientation.',
+                      ),
+                      onChanged: _busy
+                          ? null
+                          : (value) => setState(() {
+                                _usePortraitFov = value ?? false;
+                                if (_scaleSource == 'Camera/FOV estimate') {
+                                  _millimetresPerPixel = _cameraScale();
+                                }
+                              }),
                     ),
                     if (_rangefinderDescription().isNotEmpty)
                       Text(
@@ -848,6 +934,14 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       ),
                     if (_result case final result?) ...[
                       if (selected != null) ...[
+                        _dataTable([
+                          ('Conductor thickness', '${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'),
+                          ('Confidence', '${(selected.confidence * 100).toStringAsFixed(1)}%'),
+                          if (_millimetresPerPixel != null)
+                            ('Scale', '${_millimetresPerPixel!.toStringAsFixed(4)} mm/px ($_scaleSource)'),
+                          if (_scaleSource == 'Camera/FOV estimate')
+                            ('FOV', '${_effectiveFov(widget.cameraMetadata)?.toStringAsFixed(2) ?? 'Unavailable'}°'),
+                        ]),
                         Text(
                           'Conductor thickness: ${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'
                           '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
@@ -913,7 +1007,7 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         OutlinedButton.icon(
                           onPressed: _busy ? null : _share,
                           icon: const Icon(Icons.ios_share),
-                          label: const Text('Share'),
+                          label: const Text('Export ZIP / Share'),
                         ),
                         TextButton(
                           onPressed: _busy
