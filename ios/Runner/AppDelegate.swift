@@ -62,8 +62,8 @@ import AVFoundation
     }
 
     let format = device.activeFormat
-    let baseFov = format.videoFieldOfView
-    let correctedFov = format.geometricDistortionCorrectedVideoFieldOfView
+    let baseFov = Double(format.videoFieldOfView)
+    let correctedFov = Double(format.geometricDistortionCorrectedVideoFieldOfView)
     let usableBaseFov = baseFov > 0 ? baseFov : 0.0
     let usableCorrectedFov = correctedFov > 0 ? correctedFov : usableBaseFov
     let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
