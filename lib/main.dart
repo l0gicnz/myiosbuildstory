@@ -65,6 +65,19 @@ class PowerlineMeasureApp extends StatelessWidget {
               ),
             ),
           ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 58),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ),
         home: const CameraScreen(),
       );

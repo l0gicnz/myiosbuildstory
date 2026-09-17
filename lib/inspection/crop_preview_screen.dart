@@ -541,7 +541,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       '${lines.join('\n')}\n\nJSON and CSV data attached.',
       flush: true,
     );
-    files.addAll([XFile(textPath), XFile(jsonPath), XFile(csvPath)]);
     final zipPath = '${widget.path}.report.zip';
     final zipArchive = Archive();
     final exportPaths = <String>{
@@ -573,7 +572,11 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
       ZipEncoder().encode(zipArchive),
       flush: true,
     );
-    files.add(XFile(zipPath));
+    // Export the package as one attachment. Some share targets select the
+    // first text attachment when images/reports are all supplied separately.
+    files
+      ..clear()
+      ..add(XFile(zipPath));
     final legacyLines = <String>[
       if (widget.jobName?.trim().isNotEmpty == true)
         'Job: ${widget.jobName!.trim()}',
@@ -866,14 +869,14 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           if (widget.rangefinderDistanceMetres case final distance?
                               when distance > 0)
                             ('Distance', '${distance.toStringAsFixed(1)} m'),
-                          ('Width', '${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'),
-                          if (widthMm case final mm?)
-                            ('Width', '${mm.toStringAsFixed(2)} mm'),
-                          ('Confidence', '${(selected.confidence * 100).toStringAsFixed(1)}%'),
-                          if (_millimetresPerPixel != null)
-                            ('Scale', '${_millimetresPerPixel!.toStringAsFixed(4)} mm/px'),
-                          if (_scaleSource == 'Camera/FOV estimate')
-                            ('FOV', '${_effectiveFov(widget.cameraMetadata)?.toStringAsFixed(2) ?? 'Unavailable'}°'),
+                          (
+                            'Width',
+                            widthMm == null
+                                ? '${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'
+                                : '${widthMm.toStringAsFixed(2)} mm '
+                                    '(${selected.segmentationThicknessPixels.toStringAsFixed(1)} px)'
+                                ,
+                          ),
                         ]),
                       ] else
                         const Text(
@@ -929,6 +932,15 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           onPressed: _busy ? null : _share,
                           icon: const Icon(Icons.ios_share),
                           label: const Text('Export ZIP / Share'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () => Navigator.of(context).popUntil(
+                                    (route) => route.isFirst,
+                                  ),
+                          icon: const Icon(Icons.home_outlined),
+                          label: const Text('Home / New'),
                         ),
                         TextButton(
                           onPressed: _busy
