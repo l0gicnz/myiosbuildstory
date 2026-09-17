@@ -197,54 +197,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     return widthMm / widget.selection.sourceWidth;
   }
 
-  String _cameraScaleDescription() {
-    final distance = widget.rangefinderDistanceMetres;
-    final fov = _effectiveFov(widget.cameraMetadata);
-    if (distance == null || fov == null) return '';
-    return '${distance.toStringAsFixed(2)} m rangefinder · '
-        '${fov.toStringAsFixed(1)}° FOV';
-  }
-
-  String _rangefinderDescription() {
-    final distance = widget.rangefinderDistanceMetres;
-    if (distance == null || distance <= 0) return '';
-    final metadata = widget.cameraMetadata;
-    final cameraModel = metadata?['cameraModel'] as String?;
-    final fov = _effectiveFov(metadata);
-    final camera = switch ((cameraModel, fov)) {
-      (final model?, final degrees?) =>
-        ' - $model, ${degrees.toStringAsFixed(1)} deg FOV',
-      (final model?, null) => ' - $model',
-      _ => '',
-    };
-    return 'Rangefinder distance: ${distance.toStringAsFixed(2)} m$camera';
-  }
-
-  String _cameraScaleAvailabilityMessage() {
-    final distance = widget.rangefinderDistanceMetres;
-    final metadata = widget.cameraMetadata;
-    final fov = _effectiveFov(metadata);
-    if (metadata != null && fov != null && fov > 0 && fov < 180) return '';
-    if (distance != null && distance > 0) {
-      return 'Camera model/FOV data unavailable. The rangefinder distance was '
-          'saved, but automatic scale could not be calculated. Use two-point '
-          'calibration instead.';
-    }
-    return 'Camera model/FOV data unavailable. Automatic scale is unavailable; '
-        'use two-point calibration instead.';
-  }
-
-  String _cameraMetadataStatus() {
-    final metadata = widget.cameraMetadata;
-    final fov = _effectiveFov(metadata);
-    if (fov == null || fov <= 0 || fov >= 180) {
-      return 'Camera metadata: unavailable';
-    }
-    final model = metadata?['cameraModel'] as String?;
-    return 'Camera metadata: ${model ?? 'iPhone'} · '
-        '${fov.toStringAsFixed(1)}° FOV';
-  }
-
   double? _effectiveFov(Map<String, Object?>? metadata) {
     if (_usePortraitFov) {
       return _doubleValue(metadata?['portraitFovDegrees']) ??
@@ -704,13 +656,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
     final widthMm = selected == null || _millimetresPerPixel == null
         ? null
         : selected.segmentationThicknessPixels * _millimetresPerPixel!;
-    final inInches = AppSettings.instance.unit == MeasurementUnit.inches;
-    final displayedWidth = widthMm == null
-        ? null
-        : inInches
-        ? widthMm / 25.4
-        : widthMm;
-    final unitLabel = inInches ? 'in' : 'mm';
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -895,9 +840,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                       value: _usePortraitFov,
-                      title: const Text('Use portrait-axis camera FOV'),
+                      title: const Text('Use portrait camera scale'),
                       subtitle: const Text(
-                        'Use this for photos taken in portrait orientation.',
+                        'Use the portrait-axis FOV from the active camera format.',
                       ),
                       onChanged: _busy
                           ? null
@@ -908,23 +853,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                                 }
                               }),
                     ),
-                    if (_rangefinderDescription().isNotEmpty)
-                      Text(
-                        _rangefinderDescription(),
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    if (widget.rangefinderDistanceMetres == null)
-                      const Text('Rangefinder distance: not entered'),
-                    Text(_cameraMetadataStatus()),
-                    if (_cameraScaleAvailabilityMessage().isNotEmpty)
-                      Text(
-                        _cameraScaleAvailabilityMessage(),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    if (_busy) const Text('Processing on device...'),
                     if (_error != null)
                       SelectableText(
                         _error!,
@@ -935,23 +863,18 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                     if (_result case final result?) ...[
                       if (selected != null) ...[
                         _dataTable([
-                          ('Conductor thickness', '${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'),
+                          if (widget.rangefinderDistanceMetres case final distance?
+                              when distance > 0)
+                            ('Distance', '${distance.toStringAsFixed(1)} m'),
+                          ('Width', '${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'),
+                          if (widthMm case final mm?)
+                            ('Width', '${mm.toStringAsFixed(2)} mm'),
                           ('Confidence', '${(selected.confidence * 100).toStringAsFixed(1)}%'),
                           if (_millimetresPerPixel != null)
-                            ('Scale', '${_millimetresPerPixel!.toStringAsFixed(4)} mm/px ($_scaleSource)'),
+                            ('Scale', '${_millimetresPerPixel!.toStringAsFixed(4)} mm/px'),
                           if (_scaleSource == 'Camera/FOV estimate')
                             ('FOV', '${_effectiveFov(widget.cameraMetadata)?.toStringAsFixed(2) ?? 'Unavailable'}°'),
                         ]),
-                        Text(
-                          'Conductor thickness: ${selected.segmentationThicknessPixels.toStringAsFixed(1)} px'
-                          '${displayedWidth == null ? '' : ' (${displayedWidth.toStringAsFixed(inInches ? 2 : 1)} $unitLabel)'}',
-                        ),
-                        if (_millimetresPerPixel != null)
-                          Text(
-                            'Scale: ${_millimetresPerPixel!.toStringAsFixed(4)} mm/px · $_scaleSource',
-                          ),
-                        if (_scaleSource == 'Camera/FOV estimate')
-                          Text(_cameraScaleDescription()),
                       ] else
                         const Text(
                           'No conductor detected near the selected point.\nTry tapping closer to the conductor or capturing a sharper image.',
@@ -982,8 +905,6 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                           },
                         ),
                     ],
-                    if (_accepted)
-                      const Text('Detection accepted and saved for this crop.'),
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
