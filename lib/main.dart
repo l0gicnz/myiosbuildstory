@@ -55,25 +55,25 @@ class PowerlineMeasureApp extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF9AE2CC),
               foregroundColor: const Color(0xFF073B31),
-              minimumSize: const Size(0, 58),
+              minimumSize: const Size(0, 50),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(18),
               ),
               textStyle: const TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
           outlinedButtonTheme: OutlinedButtonThemeData(
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 58),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              minimumSize: const Size(0, 50),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
               ),
               textStyle: const TextStyle(
-                fontSize: 17,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),

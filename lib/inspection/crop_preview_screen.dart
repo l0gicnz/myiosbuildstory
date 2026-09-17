@@ -909,30 +909,41 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                         ),
                     ],
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      alignment: WrapAlignment.center,
+                    Row(
                       children: [
-                        FilledButton(
-                          onPressed: _busy ? null : _analyse,
-                          child: Text(
-                            _result != null || _error != null
-                                ? 'Analyse Again'
-                                : 'Analyse Conductor',
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _busy ? null : _analyse,
+                            child: Text(
+                              _result != null || _error != null
+                                  ? 'Analyse Again'
+                                  : 'Analyse Conductor',
+                            ),
                           ),
                         ),
-                        OutlinedButton(
-                          onPressed: _busy || selected == null || _accepted
-                              ? null
-                              : _accept,
-                          child: const Text('Accept Detection'),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _busy || selected == null || _accepted
+                                ? null
+                                : _accept,
+                            child: const Text('Accept Detection'),
+                          ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _busy ? null : _share,
-                          icon: const Icon(Icons.ios_share),
-                          label: const Text('Export ZIP / Share'),
-                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _share,
+                        icon: const Icon(Icons.ios_share),
+                        label: const Text('Export ZIP'),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                         OutlinedButton.icon(
                           onPressed: _busy
                               ? null
