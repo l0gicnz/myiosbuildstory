@@ -67,24 +67,33 @@ import AVFoundation
     let usableBaseFov = baseFov > 0 ? baseFov : 0.0
     let usableCorrectedFov = correctedFov > 0 ? correctedFov : usableBaseFov
     let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-    let longSide = Double(max(dimensions.width, dimensions.height))
-    let shortSide = Double(min(dimensions.width, dimensions.height))
-    let formatAspect = shortSide > 0 ? longSide / shortSide : 1.0
-    let portraitFov = usableCorrectedFov > 0
-      ? 2.0 * atan(
-          tan((usableCorrectedFov * Double.pi / 180.0) / 2.0) / formatAspect
-        ) * 180.0 / Double.pi
-      : 0.0
-    let metadata: [String: Any] = [
-      "cameraName": device.uniqueID,
-      "cameraModel": device.localizedName,
-      "baseFovDegrees": usableBaseFov,
-      "correctedFovDegrees": usableCorrectedFov,
-      "portraitFovDegrees": portraitFov,
-      "zoomFactor": device.videoZoomFactor,
-      "formatWidth": dimensions.width,
-      "formatHeight": dimensions.height,
-    ]
+    let formatWidth = Double(dimensions.width)
+    let formatHeight = Double(dimensions.height)
+    let longSide = formatWidth > formatHeight ? formatWidth : formatHeight
+    let shortSide = formatWidth < formatHeight ? formatWidth : formatHeight
+    let formatAspect: Double
+    if shortSide > 0 {
+      formatAspect = longSide / shortSide
+    } else {
+      formatAspect = 1.0
+    }
+    let portraitFov: Double
+    if usableCorrectedFov > 0 {
+      let halfAngle = usableCorrectedFov * Double.pi / 360.0
+      let portraitAngle = atan(tan(halfAngle) / formatAspect)
+      portraitFov = portraitAngle * 360.0 / Double.pi
+    } else {
+      portraitFov = 0.0
+    }
+    var metadata: [String: Any] = [:]
+    metadata["cameraName"] = device.uniqueID
+    metadata["cameraModel"] = device.localizedName
+    metadata["baseFovDegrees"] = usableBaseFov
+    metadata["correctedFovDegrees"] = usableCorrectedFov
+    metadata["portraitFovDegrees"] = portraitFov
+    metadata["zoomFactor"] = device.videoZoomFactor
+    metadata["formatWidth"] = dimensions.width
+    metadata["formatHeight"] = dimensions.height
     result(metadata)
   }
 }
