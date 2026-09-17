@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:archive/archive.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../image_processing/crop_service.dart';
@@ -26,6 +28,7 @@ class _HistoryItem {
     required this.location,
     required this.cameraMetadata,
     required this.rangefinderDistanceMetres,
+    required this.originalPath,
   });
 
   final String cropPath;
@@ -38,6 +41,7 @@ class _HistoryItem {
   final Map<String, Object?>? location;
   final Map<String, Object?>? cameraMetadata;
   final double? rangefinderDistanceMetres;
+  final String? originalPath;
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
@@ -45,6 +49,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _loading = true;
   String? _error;
   String _query = '';
+  final _selected = <_HistoryItem>{};
+  bool _selecting = false;
 
   @override
   void initState() {
@@ -89,6 +95,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           var rangefinderDistanceMetres = _doubleValue(
             raw['rangefinderDistanceMetres'],
           );
+          final originalPath = raw['originalPath'] as String?;
           final acceptedFile = File('$cropPath.accepted.json');
           String? measurement;
           final accepted = await acceptedFile.exists();
@@ -129,6 +136,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               location: location,
               cameraMetadata: cameraMetadata,
               rangefinderDistanceMetres: rangefinderDistanceMetres,
+              originalPath: originalPath,
             ),
           );
         } catch (_) {
@@ -205,6 +213,75 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     if (mounted) _load();
   }
+
+  void _toggleSelection(_HistoryItem item) {
+    setState(() {
+      if (!_selected.add(item)) _selected.remove(item);
+      _selecting = _selected.isNotEmpty;
+    });
+  }
+
+  Future<void> _exportSelected() async {
+    if (_selected.isEmpty) return;
+    final archive = Archive();
+    final records = <Map<String, Object?>>[];
+    var index = 0;
+    for (final item in _selected) {
+      index++;
+      final folder = 'inspection_$index';
+      final paths = <String>[
+        item.cropPath,
+        '${item.cropPath}.json',
+        '${item.cropPath}.accepted.json',
+        '${item.cropPath}.accepted-mask.png',
+        '${item.cropPath}.report.txt',
+        '${item.cropPath}.report.json',
+        '${item.cropPath}.report.csv',
+        if (item.originalPath case final path?) path,
+      ];
+      for (final path in paths.toSet()) {
+        final file = File(path);
+        if (!await file.exists()) continue;
+        final bytes = await file.readAsBytes();
+        archive.addFile(
+          ArchiveFile('$folder/${_basename(path)}', bytes.length, bytes),
+        );
+      }
+      records.add({
+        'jobName': item.jobName,
+        'createdAt': item.createdAt.toUtc().toIso8601String(),
+        'measurement': item.measurement,
+        'accepted': item.accepted,
+        'distanceMetres': item.rangefinderDistanceMetres,
+      });
+    }
+    final csv = StringBuffer(
+      'jobName,createdAt,measurement,accepted,distanceMetres\n',
+    );
+    for (final record in records) {
+      csv.writeln([
+        _csv(record['jobName'] as String? ?? ''),
+        record['createdAt'],
+        _csv(record['measurement'] as String? ?? ''),
+        record['accepted'],
+        record['distanceMetres'] ?? '',
+      ].map((value) => '"$value"').join(','));
+    }
+    final json = utf8.encode(jsonEncode(records));
+    final csvBytes = utf8.encode(csv.toString());
+    archive.addFile(ArchiveFile('inspections.json', json.length, json));
+    archive.addFile(ArchiveFile('inspections.csv', csvBytes.length, csvBytes));
+    final documents = await getApplicationDocumentsDirectory();
+    final zipPath = '${documents.path}/captures/inspections_${DateTime.now().millisecondsSinceEpoch}.zip';
+    await File(zipPath).writeAsBytes(ZipEncoder().encode(archive), flush: true);
+    if (!mounted) return;
+    await SharePlus.instance.share(
+      ShareParams(title: 'Powerline Measure export', files: [XFile(zipPath)]),
+    );
+  }
+
+  static String _basename(String path) => path.split(RegExp(r'[\\/]')).last;
+  static String _csv(String value) => value.replaceAll('"', '""');
 
   Future<void> _delete(_HistoryItem item) async {
     final confirmed = await showDialog<bool>(
@@ -293,6 +370,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     appBar: AppBar(
       title: const Text('History'),
       actions: [
+        if (_selecting)
+          IconButton(
+            tooltip: 'Export selected',
+            onPressed: _exportSelected,
+            icon: const Icon(Icons.file_download_outlined),
+          ),
+        IconButton(
+          tooltip: _selecting ? 'Cancel selection' : 'Select inspections',
+          onPressed: () => setState(() {
+            _selecting = !_selecting;
+            if (!_selecting) _selected.clear();
+          }),
+          icon: Icon(_selecting ? Icons.close : Icons.checklist_outlined),
+        ),
         IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         PopupMenuButton<String>(
           onSelected: (value) {
@@ -345,13 +436,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               clipBehavior: Clip.antiAlias,
                               child: ListTile(
                                 contentPadding: const EdgeInsets.all(8),
-                                leading: SizedBox.square(
-                                  dimension: 72,
-                                  child: Image.file(
-                                    File(item.cropPath),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
+                                leading: _selecting
+                                    ? Checkbox(
+                                        value: _selected.contains(item),
+                                        onChanged: (_) => _toggleSelection(item),
+                                      )
+                                    : SizedBox.square(
+                                        dimension: 72,
+                                        child: Image.file(
+                                          File(item.cropPath),
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
                                 title: Text(
                                   item.jobName.isEmpty
                                       ? 'Unnamed inspection'
@@ -362,12 +458,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   '${item.accepted ? 'Accepted' : 'Not accepted'}'
                                   '${item.measurement == null ? '' : ' · ${item.measurement}'}',
                                 ),
-                                onTap: () => _open(item),
-                                trailing: IconButton(
-                                  tooltip: 'Delete inspection',
-                                  onPressed: () => _delete(item),
-                                  icon: const Icon(Icons.delete_outline),
-                                ),
+                                onTap: () => _selecting
+                                    ? _toggleSelection(item)
+                                    : _open(item),
+                                trailing: _selecting
+                                    ? null
+                                    : IconButton(
+                                        tooltip: 'Delete inspection',
+                                        onPressed: () => _delete(item),
+                                        icon: const Icon(Icons.delete_outline),
+                                      ),
                               ),
                             );
                           },

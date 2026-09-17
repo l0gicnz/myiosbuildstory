@@ -666,6 +666,17 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
               ? '${widget.jobName} - Inspection'
               : 'Conductor inspection',
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Home / New',
+            onPressed: _busy
+                ? null
+                : () => Navigator.of(context).popUntil(
+                      (route) => route.isFirst,
+                    ),
+            icon: const Icon(Icons.home_outlined),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -933,26 +944,9 @@ class _CropPreviewScreenState extends State<CropPreviewScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : _share,
-                        icon: const Icon(Icons.ios_share),
-                        label: const Text('Export ZIP'),
-                      ),
-                    ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: _busy
-                              ? null
-                              : () => Navigator.of(context).popUntil(
-                                    (route) => route.isFirst,
-                                  ),
-                          icon: const Icon(Icons.home_outlined),
-                          label: const Text('Home / New'),
-                        ),
                         TextButton(
                           onPressed: _busy
                               ? null
